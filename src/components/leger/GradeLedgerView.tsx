@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   TableProperties,
@@ -12,8 +12,11 @@ import {
   CheckCircle2,
   AlertCircle,
   Eye,
+  Upload,
+  FileCheck,
 } from 'lucide-react';
-import { exportClassLegerToExcel } from '../../utils/excel';
+import { exportClassLegerToExcel, parseLegerExcel } from '../../utils/excel';
+import { GradeRecord } from '../../types';
 
 export const GradeLedgerView: React.FC = () => {
   const {
@@ -26,6 +29,7 @@ export const GradeLedgerView: React.FC = () => {
     setSelectedClassId,
     subjects,
     grades,
+    students,
     classStudents,
     selectedClass,
     currentPeriod,
@@ -38,11 +42,17 @@ export const GradeLedgerView: React.FC = () => {
     setRankingScoreBasis,
     setActiveMenu,
     setSelectedStudentIdForReport,
+    batchAddOrUpdateStudents,
+    batchSaveGrades,
+    showToast,
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'default' | 'name' | 'average' | 'rank'>('default');
   const [showOnlyIncomplete, setShowOnlyIncomplete] = useState(false);
+  const [uploadSuccessInfo, setUploadSuccessInfo] = useState<string | null>(null);
+
+  const legerFileInputRef = useRef<HTMLInputElement>(null);
 
   const activeSubjects = subjects.filter((s) => s.isActive);
 
@@ -108,6 +118,73 @@ export const GradeLedgerView: React.FC = () => {
     window.print();
   };
 
+  const handleLegerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const buffer = evt.target?.result as ArrayBuffer;
+        const result = parseLegerExcel(
+          buffer,
+          selectedClassId,
+          selectedPeriodId,
+          subjects
+        );
+
+        if (!result.success || result.studentCount === 0) {
+          showToast('error', result.message || 'Gagal memproses file Excel Leger.');
+          return;
+        }
+
+        // 1. Upsert students
+        batchAddOrUpdateStudents(result.studentsToUpsert, 'update_duplicate');
+
+        // 2. Map grades to student IDs
+        // Fetch refreshed students map by name or NIS
+        const gradeRecords: GradeRecord[] = [];
+        result.gradesToUpsert.forEach((item) => {
+          // Find student by NIS or name
+          const matchedStudent = students.find(
+            (s) =>
+              s.nis === item.studentNis ||
+              s.name.toUpperCase() === item.studentName.toUpperCase()
+          );
+
+          if (matchedStudent) {
+            gradeRecords.push({
+              id: `${matchedStudent.id}_${item.subjectId}_${selectedPeriodId}`,
+              studentId: matchedStudent.id,
+              subjectId: item.subjectId,
+              periodId: selectedPeriodId,
+              formativeScore: item.formativeScore,
+              summativeScore: item.summativeScore,
+              competencyDesc: item.competencyDesc,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        });
+
+        if (gradeRecords.length > 0) {
+          batchSaveGrades(gradeRecords);
+        }
+
+        const msg = `Berhasil! Data dari file "${file.name}" otomatis memperbarui ${result.studentCount} peserta didik dan ${gradeRecords.length} nilai mapel. Seluruh rapor PTS dan leger telah sinkron.`;
+        setUploadSuccessInfo(msg);
+        showToast('success', msg);
+
+        // Reset file input
+        if (legerFileInputRef.current) {
+          legerFileInputRef.current.value = '';
+        }
+      } catch (err: any) {
+        showToast('error', `Kesalahan unggah leger: ${err.message}`);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
   const openStudentReport = (studentId: string) => {
     setSelectedStudentIdForReport(studentId);
     setActiveMenu('raport');
@@ -129,6 +206,23 @@ export const GradeLedgerView: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Upload Leger Excel Button */}
+          <input
+            ref={legerFileInputRef}
+            type="file"
+            accept=".xlsx, .xls"
+            onChange={handleLegerUpload}
+            className="hidden"
+          />
+          <button
+            onClick={() => legerFileInputRef.current?.click()}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs sm:text-sm shadow-sm transition-all"
+            title="Unggah Excel Leger: Nilai dan data siswa otomatis merubah seluruh raport"
+          >
+            <Upload className="w-4 h-4" />
+            <span>Unggah Excel Leger</span>
+          </button>
+
           <button
             onClick={handleExportExcel}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold rounded-xl text-xs sm:text-sm shadow-sm transition-all"
@@ -145,6 +239,25 @@ export const GradeLedgerView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Upload Notification Alert if recently uploaded */}
+      {uploadSuccessInfo && (
+        <div className="no-print bg-emerald-50 border border-emerald-300 p-4 rounded-2xl flex items-start justify-between gap-3 text-xs text-emerald-950 animate-in fade-in">
+          <div className="flex items-start gap-2.5">
+            <FileCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-bold text-sm text-emerald-900">Sinkronisasi Excel Leger Sukses!</div>
+              <div className="text-emerald-800 mt-0.5 leading-relaxed">{uploadSuccessInfo}</div>
+            </div>
+          </div>
+          <button
+            onClick={() => setUploadSuccessInfo(null)}
+            className="text-xs text-emerald-700 hover:text-emerald-900 font-bold px-2 py-1 bg-emerald-100 rounded"
+          >
+            Tutup
+          </button>
+        </div>
+      )}
 
       {/* Filter and Configuration Card */}
       <div className="no-print bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">

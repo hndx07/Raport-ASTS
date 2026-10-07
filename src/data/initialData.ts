@@ -27,6 +27,8 @@ export const initialSchoolProfile: SchoolProfile = {
   headmasterSignatureUrl:
     'https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhcA4qnNJ_eBOjVMAGirvBsvRNjip2d1MH7f-Yu5EPG2ZAOIRR5iWj-JJg1aBfk0x9aATxpI7vGBQW8jAOgoiYrfRKdOiUBICUO8AQGI33Dguv3VD8VpBUsBgv4mpEwloQO1lbBNOcuZuE5HZoHGdrXDi3iMkkteETqx-uh3klI8A2LmszPLaa4lQjtC0sv/s688/8249.png',
   showHeadmasterSignature: true,
+  headmasterSignatureHeight: 65,
+  headmasterSignatureWidth: 140,
 };
 
 export const initialPeriods: AcademicPeriod[] = [
@@ -532,9 +534,11 @@ export const initialPrintSettings: PrintSettings = {
   paperSize: 'A4',
   orientation: 'portrait',
   fontFamily: 'times',
-  fontSize: 'normal',
+  fontSize: 'compact',
   showHeadmasterSignature: true,
   showHomeroomSignature: true,
   showParentSignature: true,
-  signatureSpacing: 'normal',
+  signatureSpacing: 'compact',
+  fitToOnePage: true,
+  headmasterSignatureHeight: 65,
 };

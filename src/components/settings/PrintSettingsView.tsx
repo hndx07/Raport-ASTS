@@ -77,21 +77,62 @@ export const PrintSettingsView: React.FC = () => {
                 onChange={(e) => updatePrintSettings({ fontSize: e.target.value as any })}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg outline-none font-semibold text-slate-800"
               >
-                <option value="compact">Kompak (Satu Halaman Penuh)</option>
+                <option value="compact">Kompak (Satu Halaman Penuh - Direkomendasikan)</option>
                 <option value="normal">Normal (Proporsional & Seimbang)</option>
                 <option value="spacious">Lebar (Lebih Renggang)</option>
               </select>
             </div>
+
+            <label className="flex items-center gap-3 p-3 rounded-xl border border-blue-200 bg-blue-50/60 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={printSettings.fitToOnePage}
+                onChange={(e) => updatePrintSettings({ fitToOnePage: e.target.checked })}
+                className="w-4 h-4 text-blue-600 rounded"
+              />
+              <div>
+                <div className="font-bold text-blue-950">
+                  Kunci Rapor Pasti 1 Halaman A4
+                </div>
+                <div className="text-xs text-blue-800">
+                  Secara otomatis mengoptimalkan skala, margin, dan tinggi baris agar rapor tidak tumpah ke lembar kedua.
+                </div>
+              </div>
+            </label>
           </div>
         </div>
 
         {/* Pengesahan & Tanda Tangan */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
           <h2 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-3">
-            Visibilitas Kolom Pengesahan
+            Pengesahan & Ukuran Tanda Tangan
           </h2>
 
           <div className="space-y-3 text-xs sm:text-sm">
+            {/* Signature Height Slider */}
+            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
+              <div className="flex justify-between items-center text-xs font-bold text-slate-800">
+                <span>Ukuran Tinggi Tanda Tangan Kepala Sekolah</span>
+                <span className="font-mono text-blue-700 bg-white px-2 py-0.5 rounded border border-slate-200">
+                  {printSettings.headmasterSignatureHeight || 65} px
+                </span>
+              </div>
+              <input
+                type="range"
+                min="35"
+                max="130"
+                step="5"
+                value={printSettings.headmasterSignatureHeight || 65}
+                onChange={(e) =>
+                  updatePrintSettings({ headmasterSignatureHeight: Number(e.target.value) })
+                }
+                className="w-full accent-blue-600 cursor-pointer"
+              />
+              <div className="text-[11px] text-slate-500">
+                * Geser untuk mengecilkan atau membesarkan gambar tanda tangan agar pas dengan halaman rapor.
+              </div>
+            </div>
+
             <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
               <input
                 type="checkbox"

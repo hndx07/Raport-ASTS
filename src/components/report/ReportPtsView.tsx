@@ -35,10 +35,20 @@ export const ReportPtsView: React.FC = () => {
     selectedStudentIdForReport,
     setSelectedStudentIdForReport,
     setActiveMenu,
+    updateSchoolProfile,
+    updatePrintSettings,
   } = useApp();
 
   // Mode: single student view vs batch all students view for printing
   const [printAllStudentsMode, setPrintAllStudentsMode] = useState(false);
+
+  const currentSigHeight = schoolProfile.headmasterSignatureHeight || printSettings.headmasterSignatureHeight || 60;
+
+  const handleAdjustSigSize = (delta: number) => {
+    const nextHeight = Math.max(35, Math.min(120, currentSigHeight + delta));
+    updateSchoolProfile({ headmasterSignatureHeight: nextHeight });
+    updatePrintSettings({ headmasterSignatureHeight: nextHeight });
+  };
 
   // Selected student
   const activeStudent =
@@ -79,51 +89,53 @@ export const ReportPtsView: React.FC = () => {
     );
     const attendance = getAttendance(student.id, selectedPeriodId);
     const studentExtras = getStudentExtracurriculars(student.id, selectedPeriodId);
+    const sigHeight = schoolProfile.headmasterSignatureHeight || printSettings.headmasterSignatureHeight || 60;
+    const sigWidth = schoolProfile.headmasterSignatureWidth || 140;
 
     return (
       <div
         key={student.id}
-        className={`bg-white p-8 sm:p-12 max-w-[210mm] mx-auto shadow-md border border-slate-200 text-black leading-normal font-document printable-document ${
-          isBatch ? 'page-break-after mb-12' : ''
+        className={`bg-white px-8 py-5 sm:px-10 sm:py-6 max-w-[210mm] mx-auto shadow-md border border-slate-200 text-black leading-tight font-document printable-document box-border ${
+          isBatch ? 'page-break-after mb-8' : ''
         }`}
-        style={{ minHeight: '297mm' }}
+        style={{ minHeight: '280mm', maxHeight: '292mm' }}
       >
         {/* Document Header with Logo and Official Titles */}
-        <div className="flex items-center justify-between border-b-2 border-black pb-3 mb-4">
-          <div className="w-16 h-16 shrink-0 flex items-center justify-center">
+        <div className="flex items-center justify-between border-b-2 border-black pb-2 mb-2.5">
+          <div className="w-14 h-14 shrink-0 flex items-center justify-center">
             <img
               src={schoolProfile.logoUrl}
               alt="Logo Sekolah"
-              className="max-h-16 max-w-16 object-contain"
+              className="max-h-14 max-w-14 object-contain"
             />
           </div>
 
-          <div className="text-center flex-1 px-4">
-            <h1 className="text-base sm:text-lg font-bold tracking-wider uppercase font-document">
+          <div className="text-center flex-1 px-3">
+            <h1 className="text-sm sm:text-base font-bold tracking-wider uppercase font-document leading-tight">
               LAPORAN HASIL BELAJAR
             </h1>
-            <h2 className="text-sm sm:text-base font-bold tracking-wide uppercase font-document mt-0.5">
+            <h2 className="text-xs sm:text-sm font-bold tracking-wide uppercase font-document mt-0.5 leading-tight">
               ASESMEN SUMATIF TENGAH SEMESTER
             </h2>
-            <div className="text-xs font-semibold uppercase text-slate-800">
+            <div className="text-[11px] font-semibold uppercase text-slate-800 mt-0.5">
               {schoolProfile.name}
             </div>
           </div>
 
-          <div className="w-16 h-16 shrink-0 flex items-center justify-center text-xs font-bold font-mono">
+          <div className="w-14 h-14 shrink-0 flex items-center justify-center text-xs font-bold font-mono">
             {/* Balance container */}
           </div>
         </div>
 
         {/* Identity Grid (Exact match with Screenshot 1) */}
-        <div className="grid grid-cols-2 gap-x-6 text-[12px] sm:text-[13px] mb-4 pb-2 border-b border-black">
+        <div className="grid grid-cols-2 gap-x-4 text-[11px] mb-2.5 pb-1.5 border-b border-black">
           {/* Left Column */}
           <table className="w-full">
             <tbody>
               <tr>
-                <td className="w-36 py-0.5 font-semibold">Nama Peserta Didik</td>
-                <td className="w-4">:</td>
-                <td className="py-0.5 font-bold uppercase">{student.name}</td>
+                <td className="w-32 py-0.5 font-semibold">Nama Peserta Didik</td>
+                <td className="w-3">:</td>
+                <td className="py-0.5 font-bold uppercase truncate max-w-[190px]">{student.name}</td>
               </tr>
               <tr>
                 <td className="py-0.5 font-semibold">NISN</td>
@@ -138,7 +150,7 @@ export const ReportPtsView: React.FC = () => {
               <tr>
                 <td className="py-0.5 font-semibold">Alamat</td>
                 <td>:</td>
-                <td className="py-0.5">{schoolProfile.address}</td>
+                <td className="py-0.5 truncate max-w-[190px]">{schoolProfile.address}</td>
               </tr>
             </tbody>
           </table>
@@ -147,8 +159,8 @@ export const ReportPtsView: React.FC = () => {
           <table className="w-full">
             <tbody>
               <tr>
-                <td className="w-32 py-0.5 font-semibold">Kelas</td>
-                <td className="w-4">:</td>
+                <td className="w-28 py-0.5 font-semibold">Kelas</td>
+                <td className="w-3">:</td>
                 <td className="py-0.5 font-bold">{selectedClass?.name}</td>
               </tr>
               <tr>
@@ -171,15 +183,15 @@ export const ReportPtsView: React.FC = () => {
         </div>
 
         {/* Main Grades Table */}
-        <div className="mb-4">
-          <table className="w-full border-collapse border border-black text-[11px] report-table">
+        <div className="mb-2.5">
+          <table className="w-full border-collapse border border-black text-[9.5pt] sm:text-[10pt] report-table">
             <thead>
               <tr className="bg-slate-100 text-center font-bold">
-                <th className="border border-black py-1.5 px-1 w-8">NO</th>
-                <th className="border border-black py-1.5 px-3 text-left w-52">MATA PELAJARAN</th>
-                <th className="border border-black py-1.5 px-1 w-16">NILAI FORMATIF</th>
-                <th className="border border-black py-1.5 px-1 w-16">NILAI SUMATIF</th>
-                <th className="border border-black py-1.5 px-3 text-left">CAPAIAN KOMPETENSI</th>
+                <th className="border border-black py-0.5 px-1 w-7 text-center">NO</th>
+                <th className="border border-black py-0.5 px-2 text-left w-48">MATA PELAJARAN</th>
+                <th className="border border-black py-0.5 px-1 w-14 text-center">NILAI FORMATIF</th>
+                <th className="border border-black py-0.5 px-1 w-14 text-center">NILAI SUMATIF</th>
+                <th className="border border-black py-0.5 px-2 text-left">CAPAIAN KOMPETENSI</th>
               </tr>
             </thead>
             <tbody>
@@ -195,7 +207,7 @@ export const ReportPtsView: React.FC = () => {
                     <tr className="bg-slate-50 font-bold">
                       <td
                         colSpan={5}
-                        className="border border-black py-1 px-3 text-left uppercase tracking-wide text-[11px]"
+                        className="border border-black py-0.5 px-2 text-left uppercase tracking-wide text-[9pt]"
                       >
                         {category}
                       </td>
@@ -217,19 +229,19 @@ export const ReportPtsView: React.FC = () => {
 
                       return (
                         <tr key={subject.id}>
-                          <td className="border border-black py-1 px-1 text-center font-mono">
+                          <td className="border border-black py-0.5 px-1 text-center font-mono text-[9pt]">
                             {subIdx + 1}
                           </td>
-                          <td className="border border-black py-1 px-3 font-semibold">
+                          <td className="border border-black py-0.5 px-2 font-semibold text-[9pt] leading-tight">
                             {subject.name}
                           </td>
-                          <td className="border border-black py-1 px-1 text-center font-mono font-medium">
+                          <td className="border border-black py-0.5 px-1 text-center font-mono font-medium text-[9pt]">
                             {formativeVal}
                           </td>
-                          <td className="border border-black py-1 px-1 text-center font-mono font-bold">
+                          <td className="border border-black py-0.5 px-1 text-center font-mono font-bold text-[9pt]">
                             {summativeVal}
                           </td>
-                          <td className="border border-black py-1 px-3 text-[10.5px] leading-snug">
+                          <td className="border border-black py-0.5 px-2 text-[8.5pt] leading-tight">
                             {desc}
                           </td>
                         </tr>
@@ -242,102 +254,105 @@ export const ReportPtsView: React.FC = () => {
           </table>
         </div>
 
-        {/* Ekstrakurikuler Table */}
-        <div className="mb-4">
-          <table className="w-full border-collapse border border-black text-[11px] report-table">
-            <thead>
-              <tr className="bg-slate-50 font-bold">
-                <th className="border border-black py-1 px-2 w-8 text-center">No</th>
-                <th className="border border-black py-1 px-3 text-left w-64">Ekstrakurikuler</th>
-                <th className="border border-black py-1 px-3 text-left">Keterangan</th>
-              </tr>
-            </thead>
-            <tbody>
-              {studentExtras.length === 0 ? (
-                <>
-                  <tr>
-                    <td className="border border-black py-1 px-2 text-center font-mono">1</td>
-                    <td className="border border-black py-1 px-3">Hisbul Wathan (HW)</td>
-                    <td className="border border-black py-1 px-3">Baik, aktif dalam kepanduan</td>
-                  </tr>
-                  <tr>
-                    <td className="border border-black py-1 px-2 text-center font-mono">2</td>
-                    <td className="border border-black py-1 px-3">Tapak Suci Putra Muhammadiyah</td>
-                    <td className="border border-black py-1 px-3">Baik, menguasai jurus dasar</td>
-                  </tr>
-                </>
-              ) : (
-                studentExtras.map((ex, idx) => (
-                  <tr key={ex.id}>
-                    <td className="border border-black py-1 px-2 text-center font-mono">
-                      {idx + 1}
-                    </td>
-                    <td className="border border-black py-1 px-3 font-semibold">{ex.name}</td>
-                    <td className="border border-black py-1 px-3">
-                      {ex.predicate} {ex.description ? `— ${ex.description}` : ''}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {/* Ekstrakurikuler & Ketidakhadiran Tables (Arranged compactly) */}
+        <div className="grid grid-cols-12 gap-3 mb-2.5">
+          {/* Ekstrakurikuler Table (col-span-7) */}
+          <div className="col-span-7">
+            <table className="w-full border-collapse border border-black text-[9pt] report-table">
+              <thead>
+                <tr className="bg-slate-50 font-bold">
+                  <th className="border border-black py-0.5 px-1 w-7 text-center">No</th>
+                  <th className="border border-black py-0.5 px-2 text-left w-44">Ekstrakurikuler</th>
+                  <th className="border border-black py-0.5 px-2 text-left">Keterangan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {studentExtras.length === 0 ? (
+                  <>
+                    <tr>
+                      <td className="border border-black py-0.5 px-1 text-center font-mono">1</td>
+                      <td className="border border-black py-0.5 px-2 font-medium">Hisbul Wathan (HW)</td>
+                      <td className="border border-black py-0.5 px-2 text-[8.5pt]">Baik, aktif kepanduan</td>
+                    </tr>
+                    <tr>
+                      <td className="border border-black py-0.5 px-1 text-center font-mono">2</td>
+                      <td className="border border-black py-0.5 px-2 font-medium">Tapak Suci Putra Muhammadiyah</td>
+                      <td className="border border-black py-0.5 px-2 text-[8.5pt]">Baik, menguasai jurus</td>
+                    </tr>
+                  </>
+                ) : (
+                  studentExtras.slice(0, 3).map((ex, idx) => (
+                    <tr key={ex.id}>
+                      <td className="border border-black py-0.5 px-1 text-center font-mono">
+                        {idx + 1}
+                      </td>
+                      <td className="border border-black py-0.5 px-2 font-medium">{ex.name}</td>
+                      <td className="border border-black py-0.5 px-2 text-[8.5pt]">
+                        {ex.predicate} {ex.description ? `— ${ex.description}` : ''}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
 
-        {/* Ketidakhadiran Table */}
-        <div className="mb-6 w-72">
-          <table className="w-full border-collapse border border-black text-[11px] report-table">
-            <thead>
-              <tr className="bg-slate-50 font-bold">
-                <th colSpan={3} className="border border-black py-1 px-3 text-left">
-                  Ketidakhadiran
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="border border-black py-1 px-3">Sakit</td>
-                <td className="border border-black py-1 px-2 text-center font-mono w-12">
-                  {attendance.sick}
-                </td>
-                <td className="border border-black py-1 px-2 text-center w-12">hari</td>
-              </tr>
-              <tr>
-                <td className="border border-black py-1 px-3">Izin</td>
-                <td className="border border-black py-1 px-2 text-center font-mono">
-                  {attendance.permitted}
-                </td>
-                <td className="border border-black py-1 px-2 text-center">hari</td>
-              </tr>
-              <tr>
-                <td className="border border-black py-1 px-3">Tanpa Keterangan</td>
-                <td className="border border-black py-1 px-2 text-center font-mono">
-                  {attendance.unexcused}
-                </td>
-                <td className="border border-black py-1 px-2 text-center">hari</td>
-              </tr>
-            </tbody>
-          </table>
+          {/* Ketidakhadiran Table (col-span-5) */}
+          <div className="col-span-5">
+            <table className="w-full border-collapse border border-black text-[9pt] report-table">
+              <thead>
+                <tr className="bg-slate-50 font-bold">
+                  <th colSpan={3} className="border border-black py-0.5 px-2 text-left">
+                    Ketidakhadiran
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="border border-black py-0.5 px-2">Sakit</td>
+                  <td className="border border-black py-0.5 px-1 text-center font-mono w-9">
+                    {attendance.sick}
+                  </td>
+                  <td className="border border-black py-0.5 px-1 text-center w-9">hari</td>
+                </tr>
+                <tr>
+                  <td className="border border-black py-0.5 px-2">Izin</td>
+                  <td className="border border-black py-0.5 px-1 text-center font-mono">
+                    {attendance.permitted}
+                  </td>
+                  <td className="border border-black py-0.5 px-1 text-center">hari</td>
+                </tr>
+                <tr>
+                  <td className="border border-black py-0.5 px-2">Tanpa Keterangan</td>
+                  <td className="border border-black py-0.5 px-1 text-center font-mono">
+                    {attendance.unexcused}
+                  </td>
+                  <td className="border border-black py-0.5 px-1 text-center">hari</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Signatures Area (Exact layout from Screenshot 1) */}
-        <div className="avoid-break mt-6">
+        <div className="avoid-break mt-2">
           {/* Top Row: Parent & Homeroom Teacher */}
-          <div className="grid grid-cols-2 gap-8 text-[12px] mb-8">
+          <div className="grid grid-cols-2 gap-4 text-[10.5pt] mb-2">
             {/* Left: Parent */}
             <div>
               <div className="text-slate-800">Orang Tua/wali Peserta Didik</div>
-              <div className="h-20 flex items-end">
-                <div className="w-48 border-b border-black"></div>
+              <div className="h-12 flex items-end">
+                <div className="w-44 border-b border-black"></div>
               </div>
             </div>
 
             {/* Right: Homeroom Teacher */}
-            <div className="text-left pl-12">
+            <div className="text-left pl-10">
               <div>
                 {schoolProfile.city}, {currentPeriod?.reportDate}
               </div>
               <div className="mt-0.5">Wali Kelas</div>
-              <div className="h-20 flex items-end">
+              <div className="h-12 flex items-end">
                 <div>
                   <div className="font-bold underline">
                     {selectedClass?.homeroomTeacher || 'Wali Kelas'}
@@ -347,25 +362,32 @@ export const ReportPtsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Bottom Center: Headmaster Signature */}
+          {/* Bottom Center: Headmaster Signature with Manual Dimension Control */}
           {schoolProfile.showHeadmasterSignature && (
-            <div className="text-center pt-2">
-              <div className="text-[12px]">Mengetahui</div>
-              <div className="text-[12px] font-bold">Kepala Sekolah</div>
+            <div className="text-center pt-1">
+              <div className="text-[10pt]">Mengetahui</div>
+              <div className="text-[10pt] font-bold">Kepala Sekolah</div>
 
-              {/* Headmaster signature image */}
-              <div className="h-24 flex items-center justify-center my-1">
+              {/* Headmaster signature image with manual adjustable sizing */}
+              <div
+                className="flex items-center justify-center my-0.5"
+                style={{ height: `${sigHeight + 4}px` }}
+              >
                 <img
                   src={schoolProfile.headmasterSignatureUrl}
                   alt="Tanda Tangan Kepala Sekolah"
-                  className="max-h-20 object-contain mx-auto"
+                  style={{
+                    height: `${sigHeight}px`,
+                    maxWidth: `${sigWidth}px`,
+                  }}
+                  className="object-contain mx-auto"
                 />
               </div>
 
-              <div className="font-bold underline text-[12.5px]">
+              <div className="font-bold underline text-[11pt] leading-tight">
                 {schoolProfile.headmasterName}
               </div>
-              <div className="text-[11px] font-mono mt-0.5">
+              <div className="text-[9.5pt] font-mono mt-0.5">
                 NBM. {schoolProfile.headmasterNbm}
               </div>
             </div>
@@ -422,8 +444,30 @@ export const ReportPtsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Print Buttons */}
+        {/* Print Buttons & Signature Size Controls */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Manual Signature Size Adjuster */}
+          <div className="flex items-center gap-1.5 bg-slate-100 rounded-xl px-2.5 py-1.5 border border-slate-200 text-xs">
+            <span className="text-slate-600 font-medium">Ukuran TTD:</span>
+            <button
+              onClick={() => handleAdjustSigSize(-5)}
+              className="w-6 h-6 flex items-center justify-center bg-white hover:bg-slate-200 rounded border border-slate-300 font-bold text-slate-700"
+              title="Kecilkan Tanda Tangan"
+            >
+              -
+            </button>
+            <span className="font-mono font-bold text-blue-900 w-10 text-center">
+              {currentSigHeight}px
+            </span>
+            <button
+              onClick={() => handleAdjustSigSize(5)}
+              className="w-6 h-6 flex items-center justify-center bg-white hover:bg-slate-200 rounded border border-slate-300 font-bold text-slate-700"
+              title="Besarkan Tanda Tangan"
+            >
+              +
+            </button>
+          </div>
+
           <button
             onClick={() => handlePrint(false)}
             className="flex items-center gap-1.5 px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white font-semibold rounded-xl text-xs sm:text-sm shadow-sm transition-all"
@@ -450,15 +494,18 @@ export const ReportPtsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Notice info */}
-      <div className="no-print bg-blue-50 border border-blue-200 p-3 rounded-xl flex items-center justify-between text-xs text-blue-900">
+      {/* Notice info with single-page guarantee indicator */}
+      <div className="no-print bg-emerald-50/80 border border-emerald-300 p-3 rounded-xl flex items-center justify-between text-xs text-emerald-950">
         <div className="flex items-center gap-2">
-          <FileText className="w-4 h-4 text-blue-700 shrink-0" />
+          <FileText className="w-4 h-4 text-emerald-700 shrink-0" />
           <span>
-            Pratinjau Dokumen Rapor Standar A4 Portrait. Tata letak, logo proporsional, tabel asesmen,
-            dan tanda tangan telah disesuaikan dengan format resmi SMK Muhammadiyah Bawang.
+            <b>Format Cetak 1 Halaman A4 Aktif:</b> Seluruh tabel nilai 14 mata pelajaran, ekstrakurikuler, ketidakhadiran,
+            dan tanda tangan telah dioptimalkan secara presisi agar tercetak dalam satu halaman utuh tanpa lembar kedua.
           </span>
         </div>
+        <span className="hidden sm:inline-block font-mono bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[11px] shrink-0">
+          A4 Fit-to-Page
+        </span>
       </div>
 
       {/* Render Document(s) */}

@@ -17,6 +17,8 @@ export interface SchoolProfile {
   headmasterNbm: string;
   headmasterSignatureUrl: string;
   showHeadmasterSignature: boolean;
+  headmasterSignatureHeight: number; // in pixels (e.g., 65)
+  headmasterSignatureWidth?: number; // in pixels (e.g., 140)
 }
 
 export interface AcademicPeriod {
@@ -122,6 +124,8 @@ export interface PrintSettings {
   showHomeroomSignature: boolean;
   showParentSignature: boolean;
   signatureSpacing: 'compact' | 'normal' | 'tall';
+  fitToOnePage: boolean;
+  headmasterSignatureHeight: number;
 }
 
 export interface ToastNotification {

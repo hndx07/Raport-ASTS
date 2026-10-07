@@ -277,6 +277,54 @@ export const SchoolProfileView: React.FC = () => {
               />
             </div>
 
+            {/* Manual Size Adjustment Controls */}
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-3">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                <span>Pengaturan Manual Ukuran Tanda Tangan</span>
+                <span className="text-[11px] font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                  {formData.headmasterSignatureHeight || 65}px × {formData.headmasterSignatureWidth || 140}px
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <div className="flex justify-between text-slate-600 mb-1">
+                    <span>Tinggi (Height)</span>
+                    <span className="font-mono font-bold text-slate-800">{formData.headmasterSignatureHeight || 65} px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="35"
+                    max="140"
+                    step="5"
+                    value={formData.headmasterSignatureHeight || 65}
+                    onChange={(e) =>
+                      setFormData({ ...formData, headmasterSignatureHeight: Number(e.target.value) })
+                    }
+                    className="w-full accent-blue-600 cursor-pointer"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-slate-600 mb-1">
+                    <span>Lebar Maksimal (Width)</span>
+                    <span className="font-mono font-bold text-slate-800">{formData.headmasterSignatureWidth || 140} px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="70"
+                    max="260"
+                    step="10"
+                    value={formData.headmasterSignatureWidth || 140}
+                    onChange={(e) =>
+                      setFormData({ ...formData, headmasterSignatureWidth: Number(e.target.value) })
+                    }
+                    className="w-full accent-blue-600 cursor-pointer"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Preview Box */}
             <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-300 flex flex-col items-center justify-center min-h-[160px]">
               {sigLoadError ? (
@@ -289,11 +337,15 @@ export const SchoolProfileView: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-2 text-center">
-                  <div className="bg-white p-2 rounded-lg border border-slate-200 inline-block shadow-2xs">
+                  <div className="bg-white p-2 rounded-lg border border-slate-200 inline-flex items-center justify-center shadow-2xs overflow-hidden">
                     <img
                       src={formData.headmasterSignatureUrl}
                       alt="Tanda Tangan Kepala Sekolah"
-                      className="max-h-20 max-w-[180px] object-contain mx-auto"
+                      style={{
+                        height: `${formData.headmasterSignatureHeight || 65}px`,
+                        maxWidth: `${formData.headmasterSignatureWidth || 140}px`,
+                      }}
+                      className="object-contain mx-auto transition-all duration-150"
                       onError={() => setSigLoadError(true)}
                     />
                   </div>

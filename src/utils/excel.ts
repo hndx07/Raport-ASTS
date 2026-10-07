@@ -221,6 +221,273 @@ export function downloadStudentTemplate() {
 /**
  * Parses uploaded Excel files with smart header detection.
  */
+export interface LegerParseResult {
+  success: boolean;
+  studentsToUpsert: Omit<Student, 'id'>[];
+  gradesToUpsert: {
+    studentName: string;
+    studentNis: string;
+    subjectId: string;
+    formativeScore: number | null;
+    summativeScore: number | null;
+    competencyDesc: string;
+  }[];
+  studentCount: number;
+  gradeCount: number;
+  detectedSubjects: string[];
+  message: string;
+}
+
+/**
+ * Specifically parses official Leger Excel files (e.g. FORMAT_RAPORT__X-1.xlsx).
+ * Automatically extracts students, subjects, formative, summative, and competency descriptions.
+ */
+export function parseLegerExcel(
+  fileData: ArrayBuffer,
+  targetClassId: string,
+  targetPeriodId: string,
+  existingSubjects: Subject[]
+): LegerParseResult {
+  try {
+    const wb = XLSX.read(fileData, { type: 'array' });
+
+    // Look for sheet named 'LEGER' or containing 'leger', else fallback to first sheet
+    let targetSheetName = wb.SheetNames[0];
+    const legerSheet = wb.SheetNames.find(
+      (s) => s.toLowerCase().includes('leger')
+    );
+    if (legerSheet) {
+      targetSheetName = legerSheet;
+    }
+
+    const ws = wb.Sheets[targetSheetName];
+    if (!ws) {
+      return {
+        success: false,
+        studentsToUpsert: [],
+        gradesToUpsert: [],
+        studentCount: 0,
+        gradeCount: 0,
+        detectedSubjects: [],
+        message: 'Lembar kerja (sheet) tidak ditemukan.',
+      };
+    }
+
+    const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    if (rows.length < 5) {
+      return {
+        success: false,
+        studentsToUpsert: [],
+        gradesToUpsert: [],
+        studentCount: 0,
+        gradeCount: 0,
+        detectedSubjects: [],
+        message: 'File tidak memiliki baris data yang cukup untuk format leger.',
+      };
+    }
+
+    // Find header rows: usually around row 4, 5, or 6
+    let subjectHeaderRowIdx = -1;
+    let subColHeaderRowIdx = -1;
+    let studentDataStartRowIdx = -1;
+
+    for (let r = 0; r < Math.min(15, rows.length); r++) {
+      const rowStr = rows[r].map((c) => String(c).toLowerCase()).join(' ');
+      if (
+        (rowStr.includes('pendidikan agama') || rowStr.includes('matematika') || rowStr.includes('pancasila')) &&
+        subjectHeaderRowIdx === -1
+      ) {
+        subjectHeaderRowIdx = r;
+      }
+      if (
+        (rowStr.includes('formatif') || rowStr.includes('sumatif') || rowStr.includes('capaian')) &&
+        subColHeaderRowIdx === -1
+      ) {
+        subColHeaderRowIdx = r;
+      }
+      // Check where student names start (e.g. col B has capital letters and row has a number in col A)
+      if (
+        r > 3 &&
+        typeof rows[r][0] === 'number' &&
+        String(rows[r][1]).trim().length > 3 &&
+        studentDataStartRowIdx === -1
+      ) {
+        studentDataStartRowIdx = r;
+      }
+    }
+
+    // Fallbacks if not strictly found
+    if (subColHeaderRowIdx === -1 && subjectHeaderRowIdx !== -1) {
+      subColHeaderRowIdx = subjectHeaderRowIdx + 1;
+    }
+    if (studentDataStartRowIdx === -1) {
+      studentDataStartRowIdx = Math.max(subColHeaderRowIdx + 1, 6);
+    }
+
+    // Map column indices to subjects
+    // Typically in FORMAT_RAPORT__X-1.xlsx:
+    // Col 0: NO
+    // Col 1: Nama peserta didik
+    // Col 2: NIS (or NISN)
+    // Col 3: Kelas
+    // Col 4: Fase
+    // Then 3 columns per subject: Formatif, Sumatif, Capaian
+    const activeSubjects = existingSubjects.filter((s) => s.isActive);
+    interface SubjectColMap {
+      subject: Subject;
+      formativeCol: number;
+      summativeCol: number;
+      capaianCol: number;
+    }
+    const subjectMappings: SubjectColMap[] = [];
+    const detectedSubjectNames: string[] = [];
+
+    // Attempt to map by header names if subjectHeaderRowIdx is valid
+    if (subjectHeaderRowIdx !== -1) {
+      const subjRow = rows[subjectHeaderRowIdx];
+      for (let c = 5; c < subjRow.length; c++) {
+        const headerText = String(subjRow[c] || '').trim();
+        if (headerText) {
+          // Find matching subject from existingSubjects
+          const match = activeSubjects.find((s) => {
+            const hLow = headerText.toLowerCase();
+            const sLow = s.name.toLowerCase();
+            return (
+              hLow === sLow ||
+              hLow.includes(sLow) ||
+              sLow.includes(hLow) ||
+              (hLow.includes('agama') && sLow.includes('agama')) ||
+              (hLow.includes('pancasila') && sLow.includes('pancasila')) ||
+              (hLow.includes('indonesia') && sLow.includes('indonesia')) ||
+              (hLow.includes('jasmani') && sLow.includes('jasmani')) ||
+              (hLow.includes('sejarah') && sLow.includes('sejarah')) ||
+              (hLow.includes('seni') && sLow.includes('seni')) ||
+              (hLow.includes('jawa') && sLow.includes('jawa')) ||
+              (hLow.includes('matematika') && sLow.includes('matematika')) ||
+              (hLow.includes('inggris') && sLow.includes('inggris')) ||
+              (hLow.includes('informatika') && sLow.includes('informatika')) ||
+              (hLow.includes('alam dan sosial') && sLow.includes('alam dan sosial')) ||
+              (hLow.includes('keahlian') && sLow.includes('keahlian')) ||
+              (hLow.includes('kemuhammadiyahan') && sLow.includes('kemuhammadiyahan')) ||
+              (hLow.includes('ismuba') && sLow.includes('ismuba'))
+            );
+          });
+
+          if (match && !subjectMappings.some((m) => m.subject.id === match.id)) {
+            subjectMappings.push({
+              subject: match,
+              formativeCol: c,
+              summativeCol: c + 1,
+              capaianCol: c + 2,
+            });
+            detectedSubjectNames.push(match.name);
+          }
+        }
+      }
+    }
+
+    // Fallback: If header matching detected few or zero, map sequentially starting at col 5
+    if (subjectMappings.length < 5) {
+      subjectMappings.length = 0;
+      detectedSubjectNames.length = 0;
+      let startCol = 5;
+      activeSubjects.forEach((sub) => {
+        if (startCol + 2 < (rows[studentDataStartRowIdx]?.length || 100)) {
+          subjectMappings.push({
+            subject: sub,
+            formativeCol: startCol,
+            summativeCol: startCol + 1,
+            capaianCol: startCol + 2,
+          });
+          detectedSubjectNames.push(sub.name);
+          startCol += 3;
+        }
+      });
+    }
+
+    const studentsToUpsert: Omit<Student, 'id'>[] = [];
+    const gradesToUpsert: {
+      studentName: string;
+      studentNis: string;
+      subjectId: string;
+      formativeScore: number | null;
+      summativeScore: number | null;
+      competencyDesc: string;
+    }[] = [];
+
+    // Extract students and grades
+    for (let r = studentDataStartRowIdx; r < rows.length; r++) {
+      const row = rows[r];
+      // Check if row has valid student name
+      const rawName = String(row[1] || '').trim();
+      if (!rawName || rawName.toLowerCase().includes('rata') || rawName.toLowerCase().includes('total')) {
+        continue;
+      }
+
+      const stName = rawName.toUpperCase();
+      const stNis = String(row[2] || (5400 + r)).trim();
+      const stNisn = String(row[3] || '').trim();
+
+      studentsToUpsert.push({
+        nis: stNis,
+        nisn: stNisn,
+        name: stName,
+        gender: 'L',
+        birthPlace: 'Batang',
+        birthDate: '2008-01-01',
+        classId: targetClassId,
+        parentName: `Orang Tua / Wali dari ${stName}`,
+        status: 'Aktif',
+      });
+
+      // Extract grades for each mapped subject
+      subjectMappings.forEach((map) => {
+        const rawForm = row[map.formativeCol];
+        const rawSum = row[map.summativeCol];
+        const rawCap = row[map.capaianCol];
+
+        const formNum =
+          rawForm !== '' && !isNaN(parseFloat(rawForm)) ? parseFloat(rawForm) : null;
+        const sumNum =
+          rawSum !== '' && !isNaN(parseFloat(rawSum)) ? parseFloat(rawSum) : null;
+        const capDesc = rawCap ? String(rawCap).trim() : map.subject.defaultCompetencyDesc || '';
+
+        gradesToUpsert.push({
+          studentName: stName,
+          studentNis: stNis,
+          subjectId: map.subject.id,
+          formativeScore: formNum,
+          summativeScore: sumNum,
+          competencyDesc: capDesc,
+        });
+      });
+    }
+
+    return {
+      success: true,
+      studentsToUpsert,
+      gradesToUpsert,
+      studentCount: studentsToUpsert.length,
+      gradeCount: gradesToUpsert.length,
+      detectedSubjects: detectedSubjectNames,
+      message: `Berhasil mengekstrak ${studentsToUpsert.length} siswa dan ${gradesToUpsert.length} nilai untuk ${detectedSubjectNames.length} mata pelajaran.`,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      studentsToUpsert: [],
+      gradesToUpsert: [],
+      studentCount: 0,
+      gradeCount: 0,
+      detectedSubjects: [],
+      message: `Gagal membaca file Excel Leger: ${err.message}`,
+    };
+  }
+}
+
+/**
+ * Parses uploaded Excel files with smart header detection.
+ */
 export function parseExcelFile(
   fileData: ArrayBuffer
 ): {
