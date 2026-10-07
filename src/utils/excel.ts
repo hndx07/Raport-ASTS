@@ -6,6 +6,9 @@ import {
   ClassGroup,
   AcademicPeriod,
   StudentRankSummary,
+  AttendanceRecord,
+  ExtracurricularRecord,
+  LegerParseResult,
 } from '../types';
 
 /**
@@ -18,12 +21,30 @@ export function exportClassLegerToExcel(
   students: Student[],
   subjects: Subject[],
   grades: GradeRecord[],
-  rankSummaries: StudentRankSummary[]
+  rankSummaries: StudentRankSummary[],
+  attendances: AttendanceRecord[] = [],
+  extracurriculars: ExtracurricularRecord[] = []
 ) {
   const wb = XLSX.utils.book_new();
 
   const rankMap = new Map<string, StudentRankSummary>();
   rankSummaries.forEach((r) => rankMap.set(r.studentId, r));
+
+  const attMap = new Map<string, AttendanceRecord>();
+  attendances.forEach((a) => {
+    if (a.periodId === period.id) {
+      attMap.set(a.studentId, a);
+    }
+  });
+
+  const extraMap = new Map<string, ExtracurricularRecord[]>();
+  extracurriculars.forEach((e) => {
+    if (e.periodId === period.id) {
+      const list = extraMap.get(e.studentId) || [];
+      list.push(e);
+      extraMap.set(e.studentId, list);
+    }
+  });
 
   const activeSubjects = subjects.filter((s) => s.isActive);
 
@@ -48,6 +69,7 @@ export function exportClassLegerToExcel(
     headerRow1.push(sub.name, '', '');
   });
   headerRow1.push('Rata-rata', 'Mapel Terisi', 'Belum Lengkap', 'Peringkat');
+  headerRow1.push('Kehadiran', '', '', 'Ekstrakurikuler 1', '', 'Ekstrakurikuler 2', '');
   rows.push(headerRow1);
 
   // Header row 2 (Sub-headers)
@@ -56,11 +78,17 @@ export function exportClassLegerToExcel(
     headerRow2.push('Formatif', 'Sumatif', 'Capaian Kompetensi');
   });
   headerRow2.push('', '', '', '');
+  headerRow2.push('Sakit', 'Izin', 'Alpa', 'Nama Kegiatan', 'Predikat', 'Nama Kegiatan', 'Predikat');
   rows.push(headerRow2);
 
   // Data rows
   students.forEach((st, idx) => {
     const summary = rankMap.get(st.id);
+    const studentAtt = attMap.get(st.id);
+    const studentExtras = extraMap.get(st.id) || [];
+    const extra1 = studentExtras[0];
+    const extra2 = studentExtras[1];
+
     const row: any[] = [
       idx + 1,
       st.name,
@@ -91,6 +119,21 @@ export function exportClassLegerToExcel(
       summary && summary.rank > 0 ? summary.rank : '—'
     );
 
+    // Kehadiran (Sakit, Izin, Alpa)
+    row.push(
+      studentAtt ? studentAtt.sick : 0,
+      studentAtt ? studentAtt.permitted : 0,
+      studentAtt ? studentAtt.unexcused : 0
+    );
+
+    // Ekstrakurikuler (Ekstra 1, Predikat 1, Ekstra 2, Predikat 2)
+    row.push(
+      extra1?.name || '',
+      extra1?.predicate || '',
+      extra2?.name || '',
+      extra2?.predicate || ''
+    );
+
     rows.push(row);
   });
 
@@ -98,7 +141,7 @@ export function exportClassLegerToExcel(
 
   // Merge headers for subjects (3 columns per subject)
   const merges: XLSX.Range[] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 + activeSubjects.length * 3 + 3 } }, // Title
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 + activeSubjects.length * 3 + 10 } }, // Title
   ];
 
   let colIdx = 6;
@@ -109,6 +152,12 @@ export function exportClassLegerToExcel(
     });
     colIdx += 3;
   });
+
+  // Merges for Kehadiran (3 cols) & Ekstra (2 cols each)
+  const attStartCol = 6 + activeSubjects.length * 3 + 4;
+  merges.push({ s: { r: 3, c: attStartCol }, e: { r: 3, c: attStartCol + 2 } });
+  merges.push({ s: { r: 3, c: attStartCol + 3 }, e: { r: 3, c: attStartCol + 4 } });
+  merges.push({ s: { r: 3, c: attStartCol + 5 }, e: { r: 3, c: attStartCol + 6 } });
 
   ws['!merges'] = merges;
 
@@ -126,6 +175,10 @@ export function exportClassLegerToExcel(
     colWidths.push({ wch: 10 }, { wch: 10 }, { wch: 35 });
   });
   colWidths.push({ wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 10 });
+  // Kehadiran (S, I, A)
+  colWidths.push({ wch: 8 }, { wch: 8 }, { wch: 8 });
+  // Ekstrakurikuler (Nama 1, Predikat 1, Nama 2, Predikat 2)
+  colWidths.push({ wch: 22 }, { wch: 14 }, { wch: 22 }, { wch: 14 });
   ws['!cols'] = colWidths;
 
   XLSX.utils.book_append_sheet(wb, ws, 'LEGER');
@@ -218,25 +271,7 @@ export function downloadStudentTemplate() {
   XLSX.writeFile(wb, 'Template_Import_Siswa_Muhiba.xlsx');
 }
 
-/**
- * Parses uploaded Excel files with smart header detection.
- */
-export interface LegerParseResult {
-  success: boolean;
-  studentsToUpsert: Omit<Student, 'id'>[];
-  gradesToUpsert: {
-    studentName: string;
-    studentNis: string;
-    subjectId: string;
-    formativeScore: number | null;
-    summativeScore: number | null;
-    competencyDesc: string;
-  }[];
-  studentCount: number;
-  gradeCount: number;
-  detectedSubjects: string[];
-  message: string;
-}
+export type { LegerParseResult };
 
 /**
  * Downloads a ready-to-use template specifically formatted for Leger Nilai.
@@ -268,6 +303,7 @@ export function downloadLegerTemplate(
     headerRow1.push(sub.name, '', '');
   });
   headerRow1.push('Rata-rata', 'Mapel Terisi', 'Belum Lengkap', 'Peringkat');
+  headerRow1.push('Kehadiran', '', '', 'Ekstrakurikuler 1', '', 'Ekstrakurikuler 2', '');
   rows.push(headerRow1);
 
   // Header 2
@@ -276,13 +312,50 @@ export function downloadLegerTemplate(
     headerRow2.push('Formatif', 'Sumatif', 'Capaian Kompetensi');
   });
   headerRow2.push('', '', '', '');
+  headerRow2.push('Sakit', 'Izin', 'Alpa', 'Nama Kegiatan', 'Predikat', 'Nama Kegiatan', 'Predikat');
   rows.push(headerRow2);
 
   // Sample student rows
   const sampleStudents = [
-    { no: 1, name: 'ACHMAD KURNIAWAN', nis: '5421', nisn: '0081234567' },
-    { no: 2, name: 'BAGAS DWI SAPUTRA', nis: '5422', nisn: '0081234568' },
-    { no: 3, name: 'CANDRA ADI PRASETYO', nis: '5423', nisn: '0081234569' },
+    {
+      no: 1,
+      name: 'ACHMAD KURNIAWAN',
+      nis: '5421',
+      nisn: '0081234567',
+      sick: 0,
+      perm: 1,
+      unex: 0,
+      extra1: 'Hisbul Wathan (HW)',
+      pred1: 'Baik',
+      extra2: 'Tapak Suci',
+      pred2: 'Sangat Baik',
+    },
+    {
+      no: 2,
+      name: 'BAGAS DWI SAPUTRA',
+      nis: '5422',
+      nisn: '0081234568',
+      sick: 2,
+      perm: 0,
+      unex: 0,
+      extra1: 'Hisbul Wathan (HW)',
+      pred1: 'Baik',
+      extra2: 'PMR / UKS',
+      pred2: 'Baik',
+    },
+    {
+      no: 3,
+      name: 'CANDRA ADI PRASETYO',
+      nis: '5423',
+      nisn: '0081234569',
+      sick: 0,
+      perm: 0,
+      unex: 0,
+      extra1: 'Hisbul Wathan (HW)',
+      pred1: 'Sangat Baik',
+      extra2: 'Sepak Bola / Futsal',
+      pred2: 'Baik',
+    },
   ];
 
   sampleStudents.forEach((st) => {
@@ -291,13 +364,14 @@ export function downloadLegerTemplate(
       row.push(80, 85, 'Menunjukkan pemahaman materi dengan baik');
     });
     row.push(82.5, activeSubjects.length, 0, st.no);
+    row.push(st.sick, st.perm, st.unex, st.extra1, st.pred1, st.extra2, st.pred2);
     rows.push(row);
   });
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
 
   const merges: XLSX.Range[] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 + activeSubjects.length * 3 + 3 } },
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 + activeSubjects.length * 3 + 10 } },
   ];
 
   let colIdx = 6;
@@ -309,6 +383,11 @@ export function downloadLegerTemplate(
     colIdx += 3;
   });
 
+  const attCol = 6 + activeSubjects.length * 3 + 4;
+  merges.push({ s: { r: 3, c: attCol }, e: { r: 3, c: attCol + 2 } });
+  merges.push({ s: { r: 3, c: attCol + 3 }, e: { r: 3, c: attCol + 4 } });
+  merges.push({ s: { r: 3, c: attCol + 5 }, e: { r: 3, c: attCol + 6 } });
+
   ws['!merges'] = merges;
   XLSX.utils.book_append_sheet(wb, ws, 'LEGER');
   XLSX.writeFile(wb, `Template_Leger_${classGroup.name.replace(/\s+/g, '_')}.xlsx`);
@@ -316,7 +395,8 @@ export function downloadLegerTemplate(
 
 /**
  * Specifically parses official Leger Excel files (e.g. FORMAT_RAPORT__X-1.xlsx).
- * Automatically extracts students, subjects, formative, summative, and competency descriptions.
+ * Automatically extracts students, subjects, formative, summative, competency descriptions,
+ * attendance (Kehadiran: S, I, A), and extracurricular activities (Ekstra).
  */
 export function parseLegerExcel(
   fileData: ArrayBuffer,
@@ -327,11 +407,130 @@ export function parseLegerExcel(
   try {
     const wb = XLSX.read(fileData, { type: 'array' });
 
-    // Look for sheet named 'LEGER' or containing 'leger', else fallback to first sheet
-    let targetSheetName = wb.SheetNames[0];
-    const legerSheet = wb.SheetNames.find(
-      (s) => s.toLowerCase().includes('leger')
+    // 1. Check for dedicated sheets for attendance and extracurriculars
+    const attMapFromDedicatedSheet = new Map<
+      string,
+      { sick: number; permitted: number; unexcused: number }
+    >();
+    const extraListFromDedicatedSheet = new Map<
+      string,
+      Array<{ name: string; predicate: string; description?: string }>
+    >();
+
+    const attSheetName = wb.SheetNames.find(
+      (s) =>
+        s.toLowerCase().includes('kehadiran') ||
+        s.toLowerCase().includes('presensi') ||
+        s.toLowerCase().includes('absensi') ||
+        s.toLowerCase().includes('ketidakhadiran')
     );
+
+    if (attSheetName && wb.Sheets[attSheetName]) {
+      const attRows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[attSheetName], {
+        header: 1,
+        defval: '',
+      });
+      // Scan for header row
+      let sCol = -1;
+      let iCol = -1;
+      let aCol = -1;
+      let nameCol = 1;
+      let nisCol = 2;
+
+      for (let r = 0; r < Math.min(10, attRows.length); r++) {
+        const row = attRows[r];
+        row.forEach((cell, c) => {
+          const txt = String(cell).toLowerCase().trim();
+          if (txt.includes('nama')) nameCol = c;
+          if (txt.includes('nis') && !txt.includes('nisn')) nisCol = c;
+          if (txt === 's' || txt.includes('sakit')) sCol = c;
+          if (txt === 'i' || txt.includes('izin')) iCol = c;
+          if (txt === 'a' || txt.includes('alpa') || txt.includes('tanpa')) aCol = c;
+        });
+        if (sCol !== -1 && iCol !== -1) break;
+      }
+
+      for (let r = 2; r < attRows.length; r++) {
+        const row = attRows[r];
+        const rawName = String(row[nameCol] || '').trim().toUpperCase();
+        const rawNis = String(row[nisCol] || '').trim();
+        if (rawName && !rawName.includes('TOTAL') && !rawName.includes('RATA')) {
+          const sick = sCol !== -1 && !isNaN(parseInt(row[sCol])) ? parseInt(row[sCol]) : 0;
+          const permitted = iCol !== -1 && !isNaN(parseInt(row[iCol])) ? parseInt(row[iCol]) : 0;
+          const unexcused = aCol !== -1 && !isNaN(parseInt(row[aCol])) ? parseInt(row[aCol]) : 0;
+          const data = { sick, permitted, unexcused };
+          if (rawNis) attMapFromDedicatedSheet.set(rawNis, data);
+          attMapFromDedicatedSheet.set(rawName, data);
+        }
+      }
+    }
+
+    const extraSheetName = wb.SheetNames.find(
+      (s) =>
+        s.toLowerCase().includes('ekstra') ||
+        s.toLowerCase().includes('ekskul') ||
+        s.toLowerCase().includes('ekstrakurikuler') ||
+        s.toLowerCase().includes('kegiatan')
+    );
+
+    if (extraSheetName && wb.Sheets[extraSheetName]) {
+      const extraRows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[extraSheetName], {
+        header: 1,
+        defval: '',
+      });
+      let nameCol = 1;
+      let nisCol = 2;
+      let ex1Col = -1;
+      let pred1Col = -1;
+      let desc1Col = -1;
+
+      for (let r = 0; r < Math.min(10, extraRows.length); r++) {
+        const row = extraRows[r];
+        row.forEach((cell, c) => {
+          const txt = String(cell).toLowerCase().trim();
+          if (txt.includes('nama peserta') || txt === 'nama') nameCol = c;
+          if (txt.includes('nis') && !txt.includes('nisn')) nisCol = c;
+          if (txt.includes('kegiatan') || txt.includes('ekstra')) {
+            if (ex1Col === -1) ex1Col = c;
+          }
+          if (txt.includes('predikat') || txt.includes('nilai')) {
+            if (pred1Col === -1) pred1Col = c;
+          }
+          if (txt.includes('keterangan')) {
+            if (desc1Col === -1) desc1Col = c;
+          }
+        });
+      }
+
+      for (let r = 2; r < extraRows.length; r++) {
+        const row = extraRows[r];
+        const rawName = String(row[nameCol] || '').trim().toUpperCase();
+        const rawNis = String(row[nisCol] || '').trim();
+        if (rawName && !rawName.includes('TOTAL') && !rawName.includes('RATA')) {
+          const extraName = ex1Col !== -1 ? String(row[ex1Col] || '').trim() : '';
+          const extraPred = pred1Col !== -1 ? String(row[pred1Col] || '').trim() : 'Baik';
+          const extraDesc = desc1Col !== -1 ? String(row[desc1Col] || '').trim() : '';
+
+          if (extraName && extraName !== '-' && extraName !== '—') {
+            const list = [
+              {
+                name: extraName,
+                predicate: extraPred || 'Baik',
+                description:
+                  extraDesc ||
+                  `Aktif mengikuti kegiatan ekstrakurikuler ${extraName} dengan predikat ${extraPred || 'Baik'}.`,
+              },
+            ];
+            if (rawNis) extraListFromDedicatedSheet.set(rawNis, list);
+            extraListFromDedicatedSheet.set(rawName, list);
+          }
+        }
+      }
+    }
+
+    // 2. Main LEGER Sheet
+    let targetSheetName = wb.SheetNames[0];
+    const legerSheet = wb.SheetNames.find((s) => s.toLowerCase().includes('leger'));
     if (legerSheet) {
       targetSheetName = legerSheet;
     }
@@ -342,8 +541,12 @@ export function parseLegerExcel(
         success: false,
         studentsToUpsert: [],
         gradesToUpsert: [],
+        attendancesToUpsert: [],
+        extracurricularsToUpsert: [],
         studentCount: 0,
         gradeCount: 0,
+        attendanceCount: 0,
+        extracurricularCount: 0,
         detectedSubjects: [],
         message: 'Lembar kerja (sheet) tidak ditemukan.',
       };
@@ -355,14 +558,18 @@ export function parseLegerExcel(
         success: false,
         studentsToUpsert: [],
         gradesToUpsert: [],
+        attendancesToUpsert: [],
+        extracurricularsToUpsert: [],
         studentCount: 0,
         gradeCount: 0,
+        attendanceCount: 0,
+        extracurricularCount: 0,
         detectedSubjects: [],
         message: 'File tidak memiliki baris data yang cukup untuk format leger.',
       };
     }
 
-    // Find header rows: usually around row 4, 5, or 6
+    // Find header rows
     let subjectHeaderRowIdx = -1;
     let subColHeaderRowIdx = -1;
     let studentDataStartRowIdx = -1;
@@ -370,18 +577,21 @@ export function parseLegerExcel(
     for (let r = 0; r < Math.min(15, rows.length); r++) {
       const rowStr = rows[r].map((c) => String(c).toLowerCase()).join(' ');
       if (
-        (rowStr.includes('pendidikan agama') || rowStr.includes('matematika') || rowStr.includes('pancasila')) &&
+        (rowStr.includes('pendidikan agama') ||
+          rowStr.includes('matematika') ||
+          rowStr.includes('pancasila')) &&
         subjectHeaderRowIdx === -1
       ) {
         subjectHeaderRowIdx = r;
       }
       if (
-        (rowStr.includes('formatif') || rowStr.includes('sumatif') || rowStr.includes('capaian')) &&
+        (rowStr.includes('formatif') ||
+          rowStr.includes('sumatif') ||
+          rowStr.includes('capaian')) &&
         subColHeaderRowIdx === -1
       ) {
         subColHeaderRowIdx = r;
       }
-      // Check where student names start (e.g. col B has capital letters and row has a number in col A)
       if (
         r > 3 &&
         typeof rows[r][0] === 'number' &&
@@ -392,7 +602,6 @@ export function parseLegerExcel(
       }
     }
 
-    // Fallbacks if not strictly found
     if (subColHeaderRowIdx === -1 && subjectHeaderRowIdx !== -1) {
       subColHeaderRowIdx = subjectHeaderRowIdx + 1;
     }
@@ -401,13 +610,6 @@ export function parseLegerExcel(
     }
 
     // Map column indices to subjects
-    // Typically in FORMAT_RAPORT__X-1.xlsx:
-    // Col 0: NO
-    // Col 1: Nama peserta didik
-    // Col 2: NIS (or NISN)
-    // Col 3: Kelas
-    // Col 4: Fase
-    // Then 3 columns per subject: Formatif, Sumatif, Capaian
     const activeSubjects = existingSubjects.filter((s) => s.isActive);
     interface SubjectColMap {
       subject: Subject;
@@ -418,13 +620,11 @@ export function parseLegerExcel(
     const subjectMappings: SubjectColMap[] = [];
     const detectedSubjectNames: string[] = [];
 
-    // Attempt to map by header names if subjectHeaderRowIdx is valid
     if (subjectHeaderRowIdx !== -1) {
       const subjRow = rows[subjectHeaderRowIdx];
       for (let c = 5; c < subjRow.length; c++) {
         const headerText = String(subjRow[c] || '').trim();
         if (headerText) {
-          // Find matching subject from existingSubjects
           const match = activeSubjects.find((s) => {
             const hLow = headerText.toLowerCase();
             const sLow = s.name.toLowerCase();
@@ -444,8 +644,16 @@ export function parseLegerExcel(
               (hLow.includes('informatika') && sLow.includes('informatika')) ||
               (hLow.includes('alam dan sosial') && sLow.includes('alam dan sosial')) ||
               (hLow.includes('keahlian') && sLow.includes('keahlian')) ||
-              (hLow.includes('kemuhammadiyahan') && sLow.includes('kemuhammadiyahan')) ||
-              (hLow.includes('ismuba') && sLow.includes('ismuba'))
+              ((hLow.includes('kemuhammadiyahan') || hLow.includes('kmh')) &&
+                (sLow.includes('kemuhammadiyahan') || s.code.toLowerCase() === 'kmh')) ||
+              ((hLow.includes('ciri khusus') ||
+                hLow.includes('ismuba') ||
+                hLow.includes('muatan ciri')) &&
+                (sLow.includes('ciri khusus') ||
+                  sLow.includes('ismuba') ||
+                  s.code.toLowerCase() === 'ismu' ||
+                  s.code.toLowerCase() === 'ciri')) ||
+              (Boolean(s.code) && s.code.toLowerCase() === hLow)
             );
           });
 
@@ -462,7 +670,6 @@ export function parseLegerExcel(
       }
     }
 
-    // Fallback: If header matching detected few or zero, map sequentially starting at col 5
     if (subjectMappings.length < 5) {
       subjectMappings.length = 0;
       detectedSubjectNames.length = 0;
@@ -481,6 +688,64 @@ export function parseLegerExcel(
       });
     }
 
+    // 3. Detect Attendance & Extracurricular Columns on the Main Sheet
+    let mainSickCol = -1;
+    let mainPermittedCol = -1;
+    let mainUnexcusedCol = -1;
+
+    // Extracurricular column pairs on main sheet
+    interface ExtraColPair {
+      nameCol: number;
+      predCol: number;
+    }
+    const mainExtraCols: ExtraColPair[] = [];
+
+    const headerSearchEnd = Math.max(subjectHeaderRowIdx + 2, 7);
+    for (let r = 0; r < Math.min(headerSearchEnd, rows.length); r++) {
+      const row = rows[r];
+      row.forEach((cellVal, c) => {
+        const text = String(cellVal || '').trim().toLowerCase();
+
+        // Attendance headers
+        if (text === 's' || text === 'sakit' || text.includes('(s)')) {
+          if (mainSickCol === -1) mainSickCol = c;
+        }
+        if (text === 'i' || text === 'izin' || text.includes('(i)')) {
+          if (mainPermittedCol === -1) mainPermittedCol = c;
+        }
+        if (
+          text === 'a' ||
+          text === 'alpa' ||
+          text.includes('tanpa ket') ||
+          text.includes('tanpa keterangan') ||
+          text.includes('(a)') ||
+          text === 'tk'
+        ) {
+          if (mainUnexcusedCol === -1) mainUnexcusedCol = c;
+        }
+
+        // Extracurricular headers
+        if (
+          text.includes('ekstrakurikuler') ||
+          text.includes('ekstra') ||
+          text.includes('ekskul')
+        ) {
+          // Check if adjacent column is predikat/nilai
+          const nextCell = String(row[c + 1] || '').trim().toLowerCase();
+          if (nextCell.includes('predikat') || nextCell.includes('nilai')) {
+            if (!mainExtraCols.some((p) => p.nameCol === c)) {
+              mainExtraCols.push({ nameCol: c, predCol: c + 1 });
+            }
+          } else {
+            // Could be single activity column
+            if (!mainExtraCols.some((p) => p.nameCol === c)) {
+              mainExtraCols.push({ nameCol: c, predCol: -1 });
+            }
+          }
+        }
+      });
+    }
+
     const studentsToUpsert: Omit<Student, 'id'>[] = [];
     const gradesToUpsert: {
       studentName: string;
@@ -490,18 +755,36 @@ export function parseLegerExcel(
       summativeScore: number | null;
       competencyDesc: string;
     }[] = [];
+    const attendancesToUpsert: {
+      studentName: string;
+      studentNis: string;
+      sick: number;
+      permitted: number;
+      unexcused: number;
+    }[] = [];
+    const extracurricularsToUpsert: {
+      studentName: string;
+      studentNis: string;
+      name: string;
+      predicate: string;
+      description?: string;
+    }[] = [];
 
-    // Extract students and grades
+    // Extract students, grades, attendance, and extracurriculars
     for (let r = studentDataStartRowIdx; r < rows.length; r++) {
       const row = rows[r];
-      // Check if row has valid student name
       const rawName = String(row[1] || '').trim();
-      if (!rawName || rawName.toLowerCase().includes('rata') || rawName.toLowerCase().includes('total')) {
+      if (
+        !rawName ||
+        rawName.toLowerCase().includes('rata') ||
+        rawName.toLowerCase().includes('total') ||
+        rawName.toLowerCase().includes('mengetahui')
+      ) {
         continue;
       }
 
       const stName = rawName.toUpperCase();
-      const stNis = String(row[2] || (5400 + r)).trim();
+      const stNis = String(row[2] || 5400 + r).trim();
       const stNisn = String(row[3] || '').trim();
 
       studentsToUpsert.push({
@@ -537,24 +820,100 @@ export function parseLegerExcel(
           competencyDesc: capDesc,
         });
       });
+
+      // Extract Attendance: Dedicated sheet takes precedence, else main sheet columns, else 0
+      const attFromSheet =
+        attMapFromDedicatedSheet.get(stNis) || attMapFromDedicatedSheet.get(stName);
+      if (attFromSheet) {
+        attendancesToUpsert.push({
+          studentName: stName,
+          studentNis: stNis,
+          sick: attFromSheet.sick,
+          permitted: attFromSheet.permitted,
+          unexcused: attFromSheet.unexcused,
+        });
+      } else if (mainSickCol !== -1 || mainPermittedCol !== -1 || mainUnexcusedCol !== -1) {
+        const rawS = mainSickCol !== -1 ? row[mainSickCol] : 0;
+        const rawI = mainPermittedCol !== -1 ? row[mainPermittedCol] : 0;
+        const rawA = mainUnexcusedCol !== -1 ? row[mainUnexcusedCol] : 0;
+        const sVal = !isNaN(parseInt(rawS)) ? parseInt(rawS) : 0;
+        const iVal = !isNaN(parseInt(rawI)) ? parseInt(rawI) : 0;
+        const aVal = !isNaN(parseInt(rawA)) ? parseInt(rawA) : 0;
+
+        attendancesToUpsert.push({
+          studentName: stName,
+          studentNis: stNis,
+          sick: sVal,
+          permitted: iVal,
+          unexcused: aVal,
+        });
+      } else {
+        // Default clean attendance
+        attendancesToUpsert.push({
+          studentName: stName,
+          studentNis: stNis,
+          sick: 0,
+          permitted: 0,
+          unexcused: 0,
+        });
+      }
+
+      // Extract Extracurriculars: Dedicated sheet takes precedence, else main sheet columns
+      const extrasFromSheet =
+        extraListFromDedicatedSheet.get(stNis) || extraListFromDedicatedSheet.get(stName);
+      if (extrasFromSheet && extrasFromSheet.length > 0) {
+        extrasFromSheet.forEach((extraItem) => {
+          extracurricularsToUpsert.push({
+            studentName: stName,
+            studentNis: stNis,
+            name: extraItem.name,
+            predicate: extraItem.predicate,
+            description: extraItem.description,
+          });
+        });
+      } else if (mainExtraCols.length > 0) {
+        mainExtraCols.forEach((pair) => {
+          const rawExtra = String(row[pair.nameCol] || '').trim();
+          if (rawExtra && rawExtra !== '-' && rawExtra !== '—') {
+            const rawPred =
+              pair.predCol !== -1 ? String(row[pair.predCol] || '').trim() : 'Baik';
+            const pred = rawPred || 'Baik';
+            extracurricularsToUpsert.push({
+              studentName: stName,
+              studentNis: stNis,
+              name: rawExtra,
+              predicate: pred,
+              description: `Aktif mengikuti kegiatan ekstrakurikuler ${rawExtra} dengan predikat ${pred}.`,
+            });
+          }
+        });
+      }
     }
 
     return {
       success: true,
       studentsToUpsert,
       gradesToUpsert,
+      attendancesToUpsert,
+      extracurricularsToUpsert,
       studentCount: studentsToUpsert.length,
       gradeCount: gradesToUpsert.length,
+      attendanceCount: attendancesToUpsert.length,
+      extracurricularCount: extracurricularsToUpsert.length,
       detectedSubjects: detectedSubjectNames,
-      message: `Berhasil mengekstrak ${studentsToUpsert.length} siswa dan ${gradesToUpsert.length} nilai untuk ${detectedSubjectNames.length} mata pelajaran.`,
+      message: `Berhasil mengekstrak ${studentsToUpsert.length} siswa, ${gradesToUpsert.length} nilai, ${attendancesToUpsert.length} data kehadiran, dan ${extracurricularsToUpsert.length} kegiatan ekstrakurikuler.`,
     };
   } catch (err: any) {
     return {
       success: false,
       studentsToUpsert: [],
       gradesToUpsert: [],
+      attendancesToUpsert: [],
+      extracurricularsToUpsert: [],
       studentCount: 0,
       gradeCount: 0,
+      attendanceCount: 0,
+      extracurricularCount: 0,
       detectedSubjects: [],
       message: `Gagal membaca file Excel Leger: ${err.message}`,
     };

@@ -14,8 +14,36 @@ import {
   ZoomOut,
   Sliders,
   CheckCircle2,
+  Columns,
+  LayoutGrid,
+  RotateCcw,
+  PenTool,
+  MoveHorizontal,
+  ChevronDown,
+  ChevronUp,
+  AlignRight,
+  Edit3,
+  Check,
+  X,
+  FileSignature,
+  BookOpen,
 } from 'lucide-react';
-import { Student, SubjectCategory } from '../../types';
+import { Student, Subject, SubjectCategory } from '../../types';
+
+// Helper to determine if a name or category represents ISMUBA / Ciri Khusus
+export const isIsmubaOrCiriKhusus = (nameOrCat: string): boolean => {
+  const l = (nameOrCat || '').toLowerCase();
+  return (
+    l.includes('ciri khusus') ||
+    l.includes('ismuba') ||
+    l.includes('kemuhammadiyahan') ||
+    l.includes('al-islam') ||
+    l.includes('tarjih') ||
+    l === 'ismu' ||
+    l === 'ciri' ||
+    l === 'kmh'
+  );
+};
 
 export const ReportPtsView: React.FC = () => {
   const {
@@ -34,17 +62,41 @@ export const ReportPtsView: React.FC = () => {
     updateSchoolProfile,
     updatePrintSettings,
     currentPeriod,
+    teachers,
+    updateSubject,
   } = useApp();
 
   // Mode: single student view vs batch all students view for printing
   const [printAllStudentsMode, setPrintAllStudentsMode] = useState(false);
-  const [showSigModal, setShowSigModal] = useState(false);
+  const [showLayoutEditor, setShowLayoutEditor] = useState(false);
+  const [activeLayoutTab, setActiveLayoutTab] = useState<'signatures' | 'columns' | 'subjects'>('signatures');
+  const [showSubjectNameModal, setShowSubjectNameModal] = useState(false);
+  const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null);
+  const [editingSubjectNameVal, setEditingSubjectNameVal] = useState<string>('');
 
+  const handleSaveSubjectName = (subjectId: string, newName?: string) => {
+    const finalName = (newName !== undefined ? newName : editingSubjectNameVal).trim();
+    if (!finalName) return;
+    updateSubject(subjectId, { name: finalName });
+    setEditingSubjectId(null);
+  };
+
+  // Headmaster signature dimensions
   const currentSigHeight =
     schoolProfile.headmasterSignatureHeight || printSettings.headmasterSignatureHeight || 85;
   const currentSigWidth =
     schoolProfile.headmasterSignatureWidth || printSettings.headmasterSignatureWidth || 230;
   const docFontSize = printSettings.documentFontSizePt || 8.5;
+
+  // Manual layout measurements
+  const colNo = printSettings.colWidthNo || 26;
+  const colSubj = printSettings.colWidthSubject || 195;
+  const colForm = printSettings.colWidthFormatif || 56;
+  const colSum = printSettings.colWidthSumatif || 56;
+  const homeroomSigSpace = printSettings.homeroomSignatureSpaceHeight || 52;
+  const parentSigSpace = printSettings.parentSignatureSpaceHeight || 46;
+  const homeroomRightOffset = printSettings.homeroomSignatureRightOffset || 0;
+  const identityRightOffset = printSettings.identityRightOffset || 0;
 
   const handleSetSigDimensions = (height: number, width: number) => {
     updateSchoolProfile({
@@ -59,7 +111,6 @@ export const ReportPtsView: React.FC = () => {
 
   const handleAdjustSigHeight = (delta: number) => {
     const nextHeight = Math.max(40, Math.min(130, currentSigHeight + delta));
-    // Maintain compact match ratio approximately (width around 2.7x height)
     const nextWidth = Math.round(Math.min(270, Math.max(120, nextHeight * 2.7)));
     handleSetSigDimensions(nextHeight, nextWidth);
   };
@@ -71,6 +122,49 @@ export const ReportPtsView: React.FC = () => {
 
   const handleSetFontSize = (size: number) => {
     updatePrintSettings({ documentFontSizePt: size });
+  };
+
+  const handleSetColWidth = (
+    key: 'colWidthNo' | 'colWidthSubject' | 'colWidthFormatif' | 'colWidthSumatif',
+    val: number
+  ) => {
+    updatePrintSettings({ [key]: val });
+  };
+
+  const handleSetHomeroomSigSpace = (height: number) => {
+    updatePrintSettings({ homeroomSignatureSpaceHeight: height });
+  };
+
+  const handleSetParentSigSpace = (height: number) => {
+    updatePrintSettings({ parentSignatureSpaceHeight: height });
+  };
+
+  const handleSetHomeroomRightOffset = (offset: number) => {
+    updatePrintSettings({ homeroomSignatureRightOffset: offset });
+  };
+
+  const handleSetIdentityRightOffset = (offset: number) => {
+    updatePrintSettings({ identityRightOffset: offset });
+  };
+
+  const handleResetLayout = () => {
+    updatePrintSettings({
+      colWidthNo: 26,
+      colWidthSubject: 195,
+      colWidthFormatif: 56,
+      colWidthSumatif: 56,
+      homeroomSignatureSpaceHeight: 52,
+      parentSignatureSpaceHeight: 46,
+      homeroomSignatureRightOffset: 0,
+      identityRightOffset: 0,
+      headmasterSignatureHeight: 85,
+      headmasterSignatureWidth: 230,
+      documentFontSizePt: 8.5,
+    });
+    updateSchoolProfile({
+      headmasterSignatureHeight: 85,
+      headmasterSignatureWidth: 230,
+    });
   };
 
   // Selected student
@@ -99,12 +193,6 @@ export const ReportPtsView: React.FC = () => {
     }, 150);
   };
 
-  const categories: SubjectCategory[] = [
-    'A. KELOMPOK MATA PELAJARAN UMUM',
-    'B. KELOMPOK MATA PELAJARAN KEJURUAN',
-    'C. KELOMPOK ISMUBA',
-  ];
-
   // Helper renderer for a single formal report page
   const renderSingleReport = (student: Student, isBatch = false) => {
     const studentGrades = grades.filter(
@@ -115,6 +203,71 @@ export const ReportPtsView: React.FC = () => {
 
     const sigHeight = schoolProfile.headmasterSignatureHeight || 85;
     const sigWidth = schoolProfile.headmasterSignatureWidth || 230;
+
+    const homeroomTeacherObj = teachers.find(
+      (t) =>
+        selectedClass?.homeroomTeacher &&
+        (t.name.trim().toLowerCase() === selectedClass.homeroomTeacher.trim().toLowerCase() ||
+          selectedClass.homeroomTeacher.toLowerCase().includes(t.name.toLowerCase()) ||
+          t.name.toLowerCase().includes(selectedClass.homeroomTeacher.toLowerCase()))
+    );
+    const homeroomTeacherNip = homeroomTeacherObj?.nipOrNbm;
+
+    // Build categories so that ISMUBA / Ciri Khusus always appear in Group C
+    const umumSubjects = subjects.filter(
+      (s) =>
+        s.isActive &&
+        (s.category.toUpperCase().includes('UMUM') || s.category.toUpperCase().startsWith('A')) &&
+        !isIsmubaOrCiriKhusus(s.category) &&
+        !isIsmubaOrCiriKhusus(s.name)
+    );
+
+    const kejuruanSubjects = subjects.filter(
+      (s) =>
+        s.isActive &&
+        (s.category.toUpperCase().includes('KEJURUAN') || s.category.toUpperCase().startsWith('B')) &&
+        !isIsmubaOrCiriKhusus(s.category) &&
+        !isIsmubaOrCiriKhusus(s.name)
+    );
+
+    const ismubaSubjects = subjects.filter(
+      (s) =>
+        s.isActive &&
+        (isIsmubaOrCiriKhusus(s.category) ||
+          isIsmubaOrCiriKhusus(s.name) ||
+          s.category.toUpperCase().startsWith('C'))
+    );
+
+    // Any remaining active subjects not caught above
+    const otherSubjects = subjects.filter(
+      (s) =>
+        s.isActive &&
+        !umumSubjects.includes(s) &&
+        !kejuruanSubjects.includes(s) &&
+        !ismubaSubjects.includes(s)
+    );
+
+    const categoryGroups = [
+      {
+        title: 'A. KELOMPOK MATA PELAJARAN UMUM',
+        subList: umumSubjects,
+      },
+      {
+        title: 'B. KELOMPOK MATA PELAJARAN KEJURUAN',
+        subList: kejuruanSubjects,
+      },
+      {
+        title: 'C. KELOMPOK CIRI KHUSUS (ISMUBA)',
+        subList: ismubaSubjects,
+      },
+    ];
+
+    if (otherSubjects.length > 0) {
+      categoryGroups.push({
+        title: 'D. MATA PELAJARAN TAMBAHAN / LAINNYA',
+        subList: otherSubjects,
+      });
+    }
 
     return (
       <div
@@ -163,90 +316,116 @@ export const ReportPtsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Identity Grid (Exact match with reference sheet) */}
+        {/* Identity Grid (Exact match with reference sheet - Semester, Kelas, Fase diposisikan rapat ke kanan) */}
         <div
           style={{ fontSize: `${(docFontSize * 0.94).toFixed(1)}pt` }}
-          className="grid grid-cols-2 gap-x-4 mb-1.5 pb-1 border-b border-black leading-normal"
+          className="flex justify-between items-start mb-1.5 pb-1 border-b border-black leading-normal"
         >
-          {/* Left Column */}
-          <table className="w-full">
+          {/* Left Column: Identitas Siswa */}
+          <table className="w-auto">
             <tbody>
               <tr>
                 <td className="w-32 py-[1px] font-semibold">Nama Peserta Didik</td>
-                <td className="w-2.5">:</td>
-                <td className="py-[1px] font-bold uppercase truncate max-w-[190px]">
+                <td className="w-2.5 text-center">:</td>
+                <td className="py-[1px] font-bold uppercase truncate max-w-[210px] pl-1">
                   {student.name}
                 </td>
               </tr>
               <tr>
                 <td className="py-[1px] font-semibold">NISN</td>
-                <td>:</td>
-                <td className="py-[1px] font-mono">{student.nisn || student.nis}</td>
+                <td className="w-2.5 text-center">:</td>
+                <td className="py-[1px] font-mono pl-1">{student.nisn || student.nis}</td>
               </tr>
               <tr>
                 <td className="py-[1px] font-semibold">Sekolah</td>
-                <td>:</td>
-                <td className="py-[1px] font-semibold">{schoolProfile.name}</td>
+                <td className="w-2.5 text-center">:</td>
+                <td className="py-[1px] font-semibold pl-1">{schoolProfile.name}</td>
               </tr>
               <tr>
                 <td className="py-[1px] font-semibold">Alamat</td>
-                <td>:</td>
-                <td className="py-[1px] truncate max-w-[190px]">{schoolProfile.address}</td>
+                <td className="w-2.5 text-center">:</td>
+                <td className="py-[1px] truncate max-w-[210px] pl-1">{schoolProfile.address}</td>
               </tr>
             </tbody>
           </table>
 
-          {/* Right Column */}
-          <table className="w-full">
-            <tbody>
-              <tr>
-                <td className="w-28 py-[1px] font-semibold">Kelas</td>
-                <td className="w-2.5">:</td>
-                <td className="py-[1px] font-bold">{selectedClass?.name}</td>
-              </tr>
-              <tr>
-                <td className="py-[1px] font-semibold">Fase</td>
-                <td>:</td>
-                <td className="py-[1px] font-bold">{selectedClass?.fase}</td>
-              </tr>
-              <tr>
-                <td className="py-[1px] font-semibold">Semester</td>
-                <td>:</td>
-                <td className="py-[1px]">{currentPeriod?.semester}</td>
-              </tr>
-              <tr>
-                <td className="py-[1px] font-semibold">Tahun Pelajaran</td>
-                <td>:</td>
-                <td className="py-[1px]">{currentPeriod?.academicYear}</td>
-              </tr>
-            </tbody>
-          </table>
+          {/* Right Column: Kelas, Fase, Semester, Tahun Pelajaran (Diposisikan Rapat ke Kanan dengan offset manual) */}
+          <div
+            style={{
+              marginRight: `${identityRightOffset}px`,
+            }}
+            className="flex justify-end ml-auto text-left"
+          >
+            <table className="w-auto">
+              <tbody>
+                <tr>
+                  <td className="w-28 py-[1px] font-semibold">Kelas</td>
+                  <td className="w-2.5 text-center">:</td>
+                  <td className="py-[1px] font-bold pl-1.5">{selectedClass?.name}</td>
+                </tr>
+                <tr>
+                  <td className="py-[1px] font-semibold">Fase</td>
+                  <td className="w-2.5 text-center">:</td>
+                  <td className="py-[1px] font-bold pl-1.5">{selectedClass?.fase}</td>
+                </tr>
+                <tr>
+                  <td className="py-[1px] font-semibold">Semester</td>
+                  <td className="w-2.5 text-center">:</td>
+                  <td className="py-[1px] pl-1.5">{currentPeriod?.semester}</td>
+                </tr>
+                <tr>
+                  <td className="py-[1px] font-semibold">Tahun Pelajaran</td>
+                  <td className="w-2.5 text-center">:</td>
+                  <td className="py-[1px] pl-1.5">{currentPeriod?.academicYear}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* Main Grades Table */}
+        {/* Main Grades Table with Manual Column Width Customization */}
         <div className="mb-1.5">
           <table
             style={{ fontSize: `${(docFontSize * 0.92).toFixed(1)}pt` }}
-            className="w-full border-collapse border border-black report-table"
+            className="w-full border-collapse border border-black report-table table-fixed"
           >
             <thead>
               <tr className="bg-slate-100 text-center font-bold">
-                <th className="border border-black py-[2px] px-1 w-6 text-center">NO</th>
-                <th className="border border-black py-[2px] px-2 text-left w-48">MATA PELAJARAN</th>
-                <th className="border border-black py-[2px] px-1 w-14 text-center">NILAI FORMATIF</th>
-                <th className="border border-black py-[2px] px-1 w-14 text-center">NILAI SUMATIF</th>
-                <th className="border border-black py-[2px] px-2 text-left">CAPAIAN KOMPETENSI</th>
+                <th
+                  style={{ width: `${colNo}px` }}
+                  className="border border-black py-[2px] px-1 text-center"
+                >
+                  NO
+                </th>
+                <th
+                  style={{ width: `${colSubj}px` }}
+                  className="border border-black py-[2px] px-2 text-left"
+                >
+                  MATA PELAJARAN
+                </th>
+                <th
+                  style={{ width: `${colForm}px` }}
+                  className="border border-black py-[2px] px-1 text-center"
+                >
+                  NILAI FORMATIF
+                </th>
+                <th
+                  style={{ width: `${colSum}px` }}
+                  className="border border-black py-[2px] px-1 text-center"
+                >
+                  NILAI SUMATIF
+                </th>
+                <th className="border border-black py-[2px] px-2 text-left">
+                  CAPAIAN KOMPETENSI
+                </th>
               </tr>
             </thead>
             <tbody>
-              {categories.map((category) => {
-                const catSubjects = subjects.filter(
-                  (s) => s.category === category && s.isActive
-                );
-                if (catSubjects.length === 0) return null;
+              {categoryGroups.map((group) => {
+                if (group.subList.length === 0) return null;
 
                 return (
-                  <React.Fragment key={category}>
+                  <React.Fragment key={group.title}>
                     {/* Category Title Row */}
                     <tr className="bg-slate-50 font-bold">
                       <td
@@ -254,13 +433,22 @@ export const ReportPtsView: React.FC = () => {
                         style={{ fontSize: `${(docFontSize * 0.88).toFixed(1)}pt` }}
                         className="border border-black py-[1.5px] px-2 text-left uppercase tracking-wide"
                       >
-                        {category}
+                        {group.title}
                       </td>
                     </tr>
 
                     {/* Subjects in this category */}
-                    {catSubjects.map((subject, subIdx) => {
-                      const grade = studentGrades.find((g) => g.subjectId === subject.id);
+                    {group.subList.map((subject, subIdx) => {
+                      // Accurate grade lookup with fallback for Ciri Khusus / ISMUBA alias
+                      const grade =
+                        studentGrades.find((g) => g.subjectId === subject.id) ||
+                        (isIsmubaOrCiriKhusus(subject.name)
+                          ? studentGrades.find((g) => {
+                              const matchingSub = subjects.find((s) => s.id === g.subjectId);
+                              return matchingSub && isIsmubaOrCiriKhusus(matchingSub.name);
+                            })
+                          : undefined);
+
                       const formativeVal =
                         grade && typeof grade.formativeScore === 'number'
                           ? grade.formativeScore
@@ -274,16 +462,77 @@ export const ReportPtsView: React.FC = () => {
 
                       return (
                         <tr key={subject.id}>
-                          <td className="border border-black py-[1.5px] px-1 text-center font-mono">
+                          <td
+                            style={{ width: `${colNo}px` }}
+                            className="border border-black py-[1.5px] px-1 text-center font-mono"
+                          >
                             {subIdx + 1}
                           </td>
-                          <td className="border border-black py-[1.5px] px-2 font-semibold leading-tight">
-                            {subject.name}
+                          <td
+                            style={{ width: `${colSubj}px` }}
+                            className="border border-black py-[1.5px] px-2 font-semibold leading-tight group relative"
+                            title={subject.name}
+                          >
+                            {editingSubjectId === subject.id && !isBatch ? (
+                              <div className="flex items-center gap-1 no-print py-0.5">
+                                <input
+                                  type="text"
+                                  value={editingSubjectNameVal}
+                                  onChange={(e) => setEditingSubjectNameVal(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveSubjectName(subject.id);
+                                    if (e.key === 'Escape') setEditingSubjectId(null);
+                                  }}
+                                  className="w-full text-xs font-bold text-slate-900 bg-amber-50 border border-amber-400 rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-amber-500"
+                                  autoFocus
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveSubjectName(subject.id)}
+                                  className="p-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-colors"
+                                  title="Simpan nama mapel"
+                                >
+                                  <Check className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingSubjectId(null)}
+                                  className="p-1 bg-slate-300 text-slate-700 rounded hover:bg-slate-400 transition-colors"
+                                  title="Batal"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="truncate">{subject.name}</span>
+                                {!isBatch && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingSubjectId(subject.id);
+                                      setEditingSubjectNameVal(subject.name);
+                                    }}
+                                    className="no-print opacity-0 group-hover:opacity-100 hover:text-indigo-700 text-slate-400 p-0.5 rounded transition-opacity"
+                                    title="Edit manual nama mata pelajaran ini"
+                                  >
+                                    <Edit3 className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </td>
-                          <td className="border border-black py-[1.5px] px-1 text-center font-mono font-medium">
+                          <td
+                            style={{ width: `${colForm}px` }}
+                            className="border border-black py-[1.5px] px-1 text-center font-mono font-medium"
+                          >
                             {formativeVal}
                           </td>
-                          <td className="border border-black py-[1.5px] px-1 text-center font-mono font-bold">
+                          <td
+                            style={{ width: `${colSum}px` }}
+                            className="border border-black py-[1.5px] px-1 text-center font-mono font-bold"
+                          >
                             {summativeVal}
                           </td>
                           <td
@@ -316,49 +565,34 @@ export const ReportPtsView: React.FC = () => {
                   <th className="border border-black py-[1.5px] px-2 text-left w-40">
                     Ekstrakurikuler
                   </th>
+                  <th className="border border-black py-[1.5px] px-1.5 text-center w-14">
+                    Predikat
+                  </th>
                   <th className="border border-black py-[1.5px] px-2 text-left">Keterangan</th>
                 </tr>
               </thead>
               <tbody>
                 {studentExtras.length === 0 ? (
-                  <>
-                    <tr>
-                      <td className="border border-black py-[1.5px] px-1 text-center font-mono">1</td>
-                      <td className="border border-black py-[1.5px] px-2 font-medium">
-                        Hisbul Wathan (HW)
-                      </td>
-                      <td
-                        style={{ fontSize: `${(docFontSize * 0.84).toFixed(1)}pt` }}
-                        className="border border-black py-[1.5px] px-2"
-                      >
-                        Baik, aktif kepanduan
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="border border-black py-[1.5px] px-1 text-center font-mono">2</td>
-                      <td className="border border-black py-[1.5px] px-2 font-medium">
-                        Tapak Suci Putra Muhammadiyah
-                      </td>
-                      <td
-                        style={{ fontSize: `${(docFontSize * 0.84).toFixed(1)}pt` }}
-                        className="border border-black py-[1.5px] px-2"
-                      >
-                        Baik, menguasai jurus
-                      </td>
-                    </tr>
-                  </>
+                  <tr>
+                    <td className="border border-black py-[1.5px] px-1 text-center font-mono">1</td>
+                    <td className="border border-black py-[1.5px] px-2">—</td>
+                    <td className="border border-black py-[1.5px] px-1 text-center">—</td>
+                    <td className="border border-black py-[1.5px] px-2 text-[0.85em]">—</td>
+                  </tr>
                 ) : (
-                  studentExtras.slice(0, 3).map((ex, idx) => (
-                    <tr key={ex.id}>
+                  studentExtras.slice(0, 2).map((extra, idx) => (
+                    <tr key={extra.id || idx}>
                       <td className="border border-black py-[1.5px] px-1 text-center font-mono">
                         {idx + 1}
                       </td>
-                      <td className="border border-black py-[1.5px] px-2 font-medium">{ex.name}</td>
-                      <td
-                        style={{ fontSize: `${(docFontSize * 0.84).toFixed(1)}pt` }}
-                        className="border border-black py-[1.5px] px-2"
-                      >
-                        {ex.predicate} {ex.description ? `— ${ex.description}` : ''}
+                      <td className="border border-black py-[1.5px] px-2 font-semibold">
+                        {extra.name}
+                      </td>
+                      <td className="border border-black py-[1.5px] px-1 text-center font-medium">
+                        {extra.predicate}
+                      </td>
+                      <td className="border border-black py-[1.5px] px-2 text-[0.85em] leading-tight">
+                        {extra.description}
                       </td>
                     </tr>
                   ))
@@ -382,11 +616,11 @@ export const ReportPtsView: React.FC = () => {
               </thead>
               <tbody>
                 <tr>
-                  <td className="border border-black py-[1.5px] px-2">Sakit</td>
-                  <td className="border border-black py-[1.5px] px-1 text-center font-mono w-8">
+                  <td className="border border-black py-[1.5px] px-2 w-32">Sakit</td>
+                  <td className="border border-black py-[1.5px] px-1 text-center font-mono w-10">
                     {attendance.sick}
                   </td>
-                  <td className="border border-black py-[1.5px] px-1 text-center w-8">hari</td>
+                  <td className="border border-black py-[1.5px] px-1 text-center w-12">hari</td>
                 </tr>
                 <tr>
                   <td className="border border-black py-[1.5px] px-2">Izin</td>
@@ -409,30 +643,46 @@ export const ReportPtsView: React.FC = () => {
 
         {/* Signatures Area (Exact layout: Wali Kelas, Orang Tua, and Mengetahui Kepala Sekolah) */}
         <div className="avoid-break mt-1">
-          {/* Top Row: Parent & Homeroom Teacher */}
+          {/* Top Row: Parent & Homeroom Teacher (Wali Kelas diposisikan rapat ke kanan dengan space leluasa) */}
           <div
             style={{ fontSize: `${(docFontSize * 0.98).toFixed(1)}pt` }}
-            className="grid grid-cols-2 gap-4 mb-0.5"
+            className="flex justify-between items-start mb-0.5"
           >
             {/* Left: Parent */}
-            <div>
+            <div className="text-left">
               <div className="text-slate-800">Orang Tua/wali Peserta Didik</div>
-              <div className="h-8 flex items-end">
+              <div
+                style={{ height: `${parentSigSpace}px` }}
+                className="flex items-end"
+              >
                 <div className="w-40 border-b border-black"></div>
               </div>
             </div>
 
-            {/* Right: Homeroom Teacher */}
-            <div className="text-left pl-8">
+            {/* Right: Homeroom Teacher - Rapat ke Kanan dengan Space Luas untuk TTD */}
+            <div
+              style={{
+                marginRight: `${homeroomRightOffset}px`,
+              }}
+              className="text-left ml-auto w-56 sm:w-60"
+            >
               <div>
                 {schoolProfile.city}, {currentPeriod?.reportDate}
               </div>
-              <div className="mt-0.5">Wali Kelas</div>
-              <div className="h-8 flex items-end">
+              <div className="mt-0.5 font-medium">Wali Kelas</div>
+              <div
+                style={{ height: `${homeroomSigSpace}px` }}
+                className="flex items-end"
+              >
                 <div>
-                  <div className="font-bold underline">
+                  <div className="font-bold underline leading-tight">
                     {selectedClass?.homeroomTeacher || 'Wali Kelas'}
                   </div>
+                  {homeroomTeacherNip && (
+                    <div className="text-[0.88em] font-mono mt-0.5 text-slate-700">
+                      NBM. {homeroomTeacherNip}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -552,6 +802,33 @@ export const ReportPtsView: React.FC = () => {
           </button>
 
           <button
+            onClick={() => setShowSubjectNameModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold rounded-xl text-xs sm:text-sm shadow-2xs transition-all"
+            title="Edit manual nama mata pelajaran yang tampil pada tabel raport"
+          >
+            <FileSignature className="w-4 h-4 text-amber-700" />
+            <span>Edit Nama Mapel Raport</span>
+          </button>
+
+          <button
+            onClick={() => setShowLayoutEditor(!showLayoutEditor)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold border transition-all ${
+              showLayoutEditor
+                ? 'bg-indigo-700 text-white border-indigo-800 shadow-sm'
+                : 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100'
+            }`}
+            title="Buka panel edit manual ukuran tiap kolom dan tanda tangan"
+          >
+            <LayoutGrid className="w-4 h-4" />
+            <span>Edit Layout Kolom & TTD</span>
+            {showLayoutEditor ? (
+              <ChevronUp className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5" />
+            )}
+          </button>
+
+          <button
             onClick={() => setActiveMenu('pengaturan_cetak')}
             className="p-2 text-slate-600 hover:text-blue-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
             title="Pengaturan Cetak Lanjutan"
@@ -561,7 +838,7 @@ export const ReportPtsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Top Controls Bar 2: Dedicated Interactive Panel for Font Size & Signature Size Adjustment */}
+      {/* Top Controls Bar 2: Font Size Adjustment & Layout Trigger */}
       <div className="no-print bg-white p-3 sm:p-4 rounded-2xl border border-blue-200 shadow-xs space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           {/* Section 1: Pengaturan Ukuran Huruf Cetak */}
@@ -616,116 +893,451 @@ export const ReportPtsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Section 2: Edit Manual Ukuran Tanda Tangan Kepala Sekolah */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Ukuran Tanda Tangan:</span>
+          {/* Section 2: Quick Status & Layout Trigger */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-slate-600 font-medium">
+              Space TTD Wali Kelas: <b className="font-mono text-indigo-700">{homeroomSigSpace}px</b>
             </span>
-
-            {/* Compact Match Preset Button */}
+            <span className="text-slate-300">•</span>
+            <span className="text-xs text-slate-600 font-medium">
+              TTD Kepala Sekolah: <b className="font-mono text-indigo-700">{currentSigHeight}×{currentSigWidth}px</b>
+            </span>
             <button
-              onClick={() => handleSetSigDimensions(85, 230)}
-              className={`px-2.5 py-1 rounded-xl text-xs font-bold border transition-all ${
-                currentSigHeight === 85 && currentSigWidth === 230
-                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-2xs'
-                  : 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100'
-              }`}
-              title="Cocokkan tanda tangan lebih besar dan compact match pas dengan kolom kepala sekolah"
+              onClick={() => setShowLayoutEditor(!showLayoutEditor)}
+              className="text-xs font-bold text-indigo-700 hover:text-indigo-900 underline ml-1"
             >
-              ⭐ Pas Kolom (85×230px)
-            </button>
-
-            {/* Extra Presets */}
-            <div className="hidden sm:flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs">
-              {[
-                { label: 'Besar (95px)', h: 95, w: 255 },
-                { label: 'Sedang (75px)', h: 75, w: 200 },
-                { label: 'Ringkas (65px)', h: 65, w: 175 },
-              ].map((preset) => (
-                <button
-                  key={preset.h}
-                  onClick={() => handleSetSigDimensions(preset.h, preset.w)}
-                  className={`px-2 py-0.5 rounded-lg font-medium transition-all ${
-                    currentSigHeight === preset.h
-                      ? 'bg-white text-indigo-900 font-bold shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Step buttons for signature height */}
-            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1">
-              <button
-                onClick={() => handleAdjustSigHeight(-5)}
-                className="w-5 h-5 flex items-center justify-center font-bold text-slate-700 hover:bg-slate-200 rounded"
-                title="Kecilkan Tanda Tangan"
-              >
-                -
-              </button>
-              <span className="font-mono font-bold text-xs text-indigo-900 px-1">
-                {currentSigHeight}px
-              </span>
-              <button
-                onClick={() => handleAdjustSigHeight(5)}
-                className="w-5 h-5 flex items-center justify-center font-bold text-slate-700 hover:bg-slate-200 rounded"
-                title="Besarkan Tanda Tangan"
-              >
-                +
-              </button>
-            </div>
-
-            {/* Detailed Manual Edit Dialog Toggle */}
-            <button
-              onClick={() => setShowSigModal(!showSigModal)}
-              className="text-xs text-blue-700 hover:text-blue-900 font-semibold underline px-1"
-            >
-              {showSigModal ? 'Tutup Pengatur' : 'Edit Detail px...'}
+              {showLayoutEditor ? 'Tutup Panel Layout' : 'Atur Ukuran Manual...'}
             </button>
           </div>
         </div>
 
-        {/* Detailed manual slider drawer if opened */}
-        {showSigModal && (
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs animate-in fade-in">
-            <div>
-              <div className="flex justify-between font-semibold text-slate-700 mb-1">
-                <span>Tinggi Tanda Tangan (Height)</span>
-                <span className="font-mono text-indigo-700 font-bold">{currentSigHeight} px</span>
+        {/* Dedicated Interactive Manual Layout Panel */}
+        {showLayoutEditor && (
+          <div className="pt-3 border-t border-slate-200 space-y-4 animate-in fade-in slide-in-from-top-1">
+            {/* Tab navigation */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-100 p-1 rounded-xl">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setActiveLayoutTab('signatures')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    activeLayoutTab === 'signatures'
+                      ? 'bg-white text-indigo-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <PenTool className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Space & Posisi Tanda Tangan</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveLayoutTab('columns')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    activeLayoutTab === 'columns'
+                      ? 'bg-white text-blue-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Columns className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Lebar Kolom Tabel Rapor</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveLayoutTab('subjects')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    activeLayoutTab === 'subjects'
+                      ? 'bg-white text-amber-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <FileSignature className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Nama Mapel Raport</span>
+                </button>
               </div>
-              <input
-                type="range"
-                min="40"
-                max="130"
-                step="5"
-                value={currentSigHeight}
-                onChange={(e) =>
-                  handleSetSigDimensions(Number(e.target.value), currentSigWidth)
-                }
-                className="w-full accent-indigo-600 cursor-pointer"
-              />
+
+              <div className="flex items-center gap-2 px-2">
+                <button
+                  onClick={handleResetLayout}
+                  className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-red-700 bg-white hover:bg-red-50 border border-slate-200 hover:border-red-200 px-2.5 py-1 rounded-lg transition-colors"
+                  title="Kembalikan semua lebar kolom dan ukuran tanda tangan ke ukuran baku yang pas 1 lembar A4"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset ke Standar Pas 1 Lembar</span>
+                </button>
+              </div>
             </div>
 
-            <div>
-              <div className="flex justify-between font-semibold text-slate-700 mb-1">
-                <span>Lebar Maksimal Tanda Tangan (Width - Compact Match Kolom)</span>
-                <span className="font-mono text-indigo-700 font-bold">{currentSigWidth} px</span>
+            {/* Tab 1: Space & Posisi Tanda Tangan */}
+            {activeLayoutTab === 'signatures' && (
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+                {/* 1. Space Tanda Tangan Wali Kelas */}
+                <div className="bg-white p-3 rounded-xl border border-indigo-100 shadow-2xs space-y-2">
+                  <div className="flex justify-between items-center font-bold text-slate-800">
+                    <span className="flex items-center gap-1 text-indigo-900">
+                      <PenTool className="w-3.5 h-3.5 text-indigo-600" />
+                      Space Tanda Tangan Wali Kelas
+                    </span>
+                    <span className="font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                      {homeroomSigSpace} px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="30"
+                    max="95"
+                    step="2"
+                    value={homeroomSigSpace}
+                    onChange={(e) => handleSetHomeroomSigSpace(Number(e.target.value))}
+                    className="w-full accent-indigo-600 cursor-pointer"
+                  />
+                  <div className="flex items-center gap-1 pt-1">
+                    {[
+                      { label: 'Kompak (40px)', val: 40 },
+                      { label: 'Pas TTD (52px)', val: 52 },
+                      { label: 'Lega (68px)', val: 68 },
+                    ].map((btn) => (
+                      <button
+                        key={btn.val}
+                        onClick={() => handleSetHomeroomSigSpace(btn.val)}
+                        className={`px-2 py-0.5 rounded text-[11px] font-medium border ${
+                          homeroomSigSpace === btn.val
+                            ? 'bg-indigo-600 text-white border-indigo-700'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    * Memberikan ruang vertikal yang cukup untuk tanda tangan basah & stempel tanpa menabrak nama guru.
+                  </p>
+                </div>
+
+                {/* 2. Ukuran Tanda Tangan Kepala Sekolah (Height & Width) */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
+                  <div className="flex justify-between items-center font-bold text-slate-800">
+                    <span className="flex items-center gap-1 text-blue-900">
+                      <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                      Tanda Tangan Kepala Sekolah
+                    </span>
+                    <span className="font-mono text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      {currentSigHeight} × {currentSigWidth} px
+                    </span>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[11px] font-medium text-slate-600 mb-0.5">
+                      <span>Tinggi (Height):</span>
+                      <span className="font-mono font-bold text-blue-800">{currentSigHeight} px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="40"
+                      max="130"
+                      step="5"
+                      value={currentSigHeight}
+                      onChange={(e) =>
+                        handleSetSigDimensions(Number(e.target.value), currentSigWidth)
+                      }
+                      className="w-full accent-blue-600 cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[11px] font-medium text-slate-600 mb-0.5">
+                      <span>Lebar Maksimal (Width):</span>
+                      <span className="font-mono font-bold text-blue-800">{currentSigWidth} px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="100"
+                      max="280"
+                      step="10"
+                      value={currentSigWidth}
+                      onChange={(e) =>
+                        handleSetSigDimensions(currentSigHeight, Number(e.target.value))
+                      }
+                      className="w-full accent-blue-600 cursor-pointer"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleSetSigDimensions(85, 230)}
+                      className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100"
+                    >
+                      ⭐ Pas Kolom (85×230px)
+                    </button>
+                    <button
+                      onClick={() => handleSetSigDimensions(95, 255)}
+                      className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100"
+                    >
+                      Besar (95px)
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Posisi Geser Horizontal (Wali Kelas & Identitas) */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2.5">
+                  <div className="flex justify-between items-center font-bold text-slate-800">
+                    <span className="flex items-center gap-1 text-slate-900">
+                      <MoveHorizontal className="w-3.5 h-3.5 text-emerald-600" />
+                      Penyesuaian Posisi Kanan/Kiri
+                    </span>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-[11px] font-medium text-slate-600 mb-0.5">
+                      <span>Geser Posisi Wali Kelas:</span>
+                      <span className="font-mono font-bold text-slate-800">
+                        {homeroomRightOffset === 0 ? 'Rapat Kanan (0)' : `${homeroomRightOffset} px`}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="-20"
+                      max="40"
+                      step="2"
+                      value={homeroomRightOffset}
+                      onChange={(e) => handleSetHomeroomRightOffset(Number(e.target.value))}
+                      className="w-full accent-emerald-600 cursor-pointer"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-[11px] font-medium text-slate-600 mb-0.5">
+                      <span>Geser Posisi Semester & Kelas:</span>
+                      <span className="font-mono font-bold text-slate-800">
+                        {identityRightOffset === 0 ? 'Rapat Kanan (0)' : `${identityRightOffset} px`}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="-20"
+                      max="40"
+                      step="2"
+                      value={identityRightOffset}
+                      onChange={(e) => handleSetIdentityRightOffset(Number(e.target.value))}
+                      className="w-full accent-emerald-600 cursor-pointer"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-[11px] font-medium text-slate-600 mb-0.5">
+                      <span>Space Garis Orang Tua:</span>
+                      <span className="font-mono font-bold text-slate-800">{parentSigSpace} px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="25"
+                      max="70"
+                      step="3"
+                      value={parentSigSpace}
+                      onChange={(e) => handleSetParentSigSpace(Number(e.target.value))}
+                      className="w-full accent-slate-600 cursor-pointer"
+                    />
+                  </div>
+                </div>
               </div>
-              <input
-                type="range"
-                min="100"
-                max="280"
-                step="10"
-                value={currentSigWidth}
-                onChange={(e) =>
-                  handleSetSigDimensions(currentSigHeight, Number(e.target.value))
-                }
-                className="w-full accent-indigo-600 cursor-pointer"
-              />
-            </div>
+            )}
+
+            {/* Tab 2: Lebar Kolom Tabel Rapor */}
+            {activeLayoutTab === 'columns' && (
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                {/* Kolom NO */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex justify-between items-center font-bold text-slate-800">
+                    <span>1. Lebar Kolom NO</span>
+                    <span className="font-mono text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      {colNo} px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="18"
+                    max="45"
+                    step="1"
+                    value={colNo}
+                    onChange={(e) => handleSetColWidth('colWidthNo', Number(e.target.value))}
+                    className="w-full accent-blue-600 cursor-pointer"
+                  />
+                  <div className="text-[11px] text-slate-500">Nomor urut mata pelajaran.</div>
+                </div>
+
+                {/* Kolom MATA PELAJARAN */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex justify-between items-center font-bold text-slate-800">
+                    <span>2. Kolom MATA PELAJARAN</span>
+                    <span className="font-mono text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      {colSubj} px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="140"
+                    max="260"
+                    step="5"
+                    value={colSubj}
+                    onChange={(e) => handleSetColWidth('colWidthSubject', Number(e.target.value))}
+                    className="w-full accent-blue-600 cursor-pointer"
+                  />
+                  <div className="text-[11px] text-slate-500">Nama mata pelajaran & ciri khusus.</div>
+                </div>
+
+                {/* Kolom NILAI FORMATIF */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex justify-between items-center font-bold text-slate-800">
+                    <span>3. Kolom NILAI FORMATIF</span>
+                    <span className="font-mono text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      {colForm} px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="40"
+                    max="85"
+                    step="2"
+                    value={colForm}
+                    onChange={(e) => handleSetColWidth('colWidthFormatif', Number(e.target.value))}
+                    className="w-full accent-blue-600 cursor-pointer"
+                  />
+                  <div className="text-[11px] text-slate-500">Angka nilai asesmen formatif.</div>
+                </div>
+
+                {/* Kolom NILAI SUMATIF */}
+                <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1.5">
+                  <div className="flex justify-between items-center font-bold text-slate-800">
+                    <span>4. Kolom NILAI SUMATIF</span>
+                    <span className="font-mono text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      {colSum} px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="40"
+                    max="85"
+                    step="2"
+                    value={colSum}
+                    onChange={(e) => handleSetColWidth('colWidthSumatif', Number(e.target.value))}
+                    className="w-full accent-blue-600 cursor-pointer"
+                  />
+                  <div className="text-[11px] text-slate-500">Angka nilai asesmen sumatif tengah semester.</div>
+                </div>
+
+                <div className="sm:col-span-2 lg:col-span-4 bg-blue-50/70 p-2.5 rounded-xl border border-blue-200 text-blue-900 text-[11px] flex items-center justify-between">
+                  <span>
+                    💡 <b>Kolom 5 (CAPAIAN KOMPETENSI)</b> secara otomatis mengisi seluruh sisa ruang tabel secara proporsional sehingga tabel selalu pas 100% dengan margin cetak dokumen.
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        updatePrintSettings({
+                          colWidthNo: 26,
+                          colWidthSubject: 195,
+                          colWidthFormatif: 56,
+                          colWidthSumatif: 56,
+                        });
+                      }}
+                      className="px-2 py-0.5 bg-white border border-blue-300 rounded font-bold hover:bg-blue-100"
+                    >
+                      Preset Ideal
+                    </button>
+                    <button
+                      onClick={() => {
+                        updatePrintSettings({
+                          colWidthNo: 24,
+                          colWidthSubject: 220,
+                          colWidthFormatif: 52,
+                          colWidthSumatif: 52,
+                        });
+                      }}
+                      className="px-2 py-0.5 bg-white border border-blue-300 rounded font-medium hover:bg-blue-100"
+                    >
+                      Mapel Lebih Lebar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3: Edit Manual Nama Mata Pelajaran Pada Raport */}
+            {activeLayoutTab === 'subjects' && (
+              <div className="p-4 bg-amber-50/50 rounded-xl border border-amber-200 space-y-3 text-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-amber-200">
+                  <div>
+                    <h4 className="font-bold text-amber-950 flex items-center gap-1.5 text-sm">
+                      <FileSignature className="w-4 h-4 text-amber-700" />
+                      <span>Edit Manual Nama Mata Pelajaran Pada Raport</span>
+                    </h4>
+                    <p className="text-[11px] text-amber-800">
+                      Ubah penamaan mata pelajaran yang tampil pada tabel raport cetak. Perubahan otomatis tersimpan dan langsung tampil di lembar raport.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowSubjectNameModal(true)}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs shadow-2xs transition-all shrink-0 self-start sm:self-auto"
+                  >
+                    Buka Dialog Editor Lengkap
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {subjects
+                    .filter((s) => s.isActive)
+                    .map((sub) => {
+                      const isCiri = isIsmubaOrCiriKhusus(sub.name) || isIsmubaOrCiriKhusus(sub.category);
+                      return (
+                        <div
+                          key={sub.id}
+                          className={`p-2.5 rounded-xl border shadow-2xs space-y-1.5 ${
+                            isCiri
+                              ? 'bg-emerald-50/80 border-emerald-300'
+                              : 'bg-white border-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                              {sub.code || 'MAPEL'}
+                            </span>
+                            {isCiri && (
+                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded">
+                                Ciri Khusus / ISMUBA
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <input
+                              type="text"
+                              value={sub.name}
+                              onChange={(e) => updateSubject(sub.id, { name: e.target.value })}
+                              className="w-full text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-amber-500"
+                              placeholder="Nama Mata Pelajaran..."
+                            />
+                          </div>
+                          {isCiri && (
+                            <div className="flex flex-wrap gap-1 pt-0.5">
+                              {[
+                                'Ciri Khusus (ISMUBA)',
+                                'Kemuhammadiyahan',
+                                'Al-Islam & Kemuhammadiyahan',
+                              ].map((alias) => (
+                                <button
+                                  key={alias}
+                                  onClick={() => updateSubject(sub.id, { name: alias })}
+                                  className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                                    sub.name === alias
+                                      ? 'bg-emerald-700 text-white border-emerald-800 font-bold'
+                                      : 'bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                                  }`}
+                                >
+                                  {alias}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -735,8 +1347,8 @@ export const ReportPtsView: React.FC = () => {
         <div className="flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
           <span>
-            <b>Garansi 1 Halaman A4 Aktif:</b> Tata letak rapor (identitas, 14 mata pelajaran, ekstrakurikuler,
-            ketidakhadiran, & tanda tangan kepala sekolah yang compact match) telah dikunci agar dicetak tepat satu lembar A4 tanpa halaman kedua.
+            <b>Garansi 1 Halaman A4 Aktif:</b> Tata letak rapor (identitas, 14 mata pelajaran termasuk Ciri Khusus/ISMUBA,
+            ekstrakurikuler, ketidakhadiran, ruang tanda tangan wali kelas & kepala sekolah) telah dikunci agar dicetak tepat satu lembar A4.
           </span>
         </div>
         <span className="hidden md:inline-block font-mono bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[11px] shrink-0">
@@ -752,6 +1364,170 @@ export const ReportPtsView: React.FC = () => {
           activeStudent && renderSingleReport(activeStudent, false)
         )}
       </div>
+
+      {/* Modal Dialog: Edit Manual Nama Mata Pelajaran Pada Raport */}
+      {showSubjectNameModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs overflow-y-auto no-print animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 bg-linear-to-r from-amber-50 to-orange-50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center shadow-xs">
+                  <FileSignature className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                    Edit Manual Nama Mata Pelajaran Pada Raport
+                  </h3>
+                  <p className="text-xs text-slate-600">
+                    Sesuaikan nama mata pelajaran yang tampil pada cetak Raport PTS. Perubahan langsung tersimpan otomatis.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSubjectNameModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-white rounded-xl transition-colors"
+                title="Tutup dialog"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body - Grouped list */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1">
+              {/* Quick Presets for Muhammadiyah Ciri Khusus / ISMUBA */}
+              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-emerald-950">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <span>
+                    <b>Pilihan Cepat Ciri Khusus (ISMUBA):</b> Klik salah satu pilihan untuk mengubah nama mapel ciri khusus seketika:
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {['Ciri Khusus (ISMUBA)', 'Kemuhammadiyahan', 'ISMUBA', 'Pendidikan Kemuhammadiyahan'].map((preset) => {
+                    const ismubaSub = subjects.find(
+                      (s) => isIsmubaOrCiriKhusus(s.name) || isIsmubaOrCiriKhusus(s.category)
+                    );
+                    return (
+                      <button
+                        key={preset}
+                        onClick={() => {
+                          if (ismubaSub) {
+                            updateSubject(ismubaSub.id, { name: preset });
+                          }
+                        }}
+                        className="px-2.5 py-1 bg-white hover:bg-emerald-100 text-emerald-800 font-bold border border-emerald-300 rounded-lg text-xs shadow-2xs transition-colors"
+                      >
+                        {preset}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Grouped Subjects */}
+              {[
+                {
+                  title: 'A. KELOMPOK MATA PELAJARAN UMUM',
+                  subs: subjects.filter(
+                    (s) => s.isActive && (s.category?.includes('UMUM') || s.orderIndex <= 7)
+                  ),
+                },
+                {
+                  title: 'B. KELOMPOK MATA PELAJARAN KEJURUAN',
+                  subs: subjects.filter(
+                    (s) =>
+                      s.isActive &&
+                      (s.category?.includes('KEJURUAN') ||
+                        (s.orderIndex > 7 && s.orderIndex <= 12 && !isIsmubaOrCiriKhusus(s.name)))
+                  ),
+                },
+                {
+                  title: 'C. KELOMPOK CIRI KHUSUS (ISMUBA)',
+                  subs: subjects.filter(
+                    (s) =>
+                      s.isActive &&
+                      (isIsmubaOrCiriKhusus(s.name) || isIsmubaOrCiriKhusus(s.category))
+                  ),
+                },
+                {
+                  title: 'D. MATA PELAJARAN TAMBAHAN / LAINNYA',
+                  subs: subjects.filter(
+                    (s) =>
+                      s.isActive &&
+                      !s.category?.includes('UMUM') &&
+                      !s.category?.includes('KEJURUAN') &&
+                      !isIsmubaOrCiriKhusus(s.name) &&
+                      !isIsmubaOrCiriKhusus(s.category) &&
+                      s.orderIndex > 12
+                  ),
+                },
+              ].map((group) => {
+                if (group.subs.length === 0) return null;
+                return (
+                  <div key={group.title} className="space-y-2">
+                    <h4 className="text-xs font-bold text-slate-700 tracking-wide uppercase flex items-center gap-1.5 pb-1 border-b border-slate-200">
+                      <BookOpen className="w-3.5 h-3.5 text-blue-700" />
+                      <span>{group.title}</span>
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      {group.subs.map((sub, idx) => {
+                        const isCiri = isIsmubaOrCiriKhusus(sub.name);
+                        return (
+                          <div
+                            key={sub.id}
+                            className={`p-3 rounded-xl border flex items-center gap-3 transition-colors ${
+                              isCiri
+                                ? 'bg-emerald-50/70 border-emerald-300'
+                                : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                            }`}
+                          >
+                            <span className="w-6 text-center font-mono font-bold text-xs text-slate-500">
+                              {idx + 1}.
+                            </span>
+                            <div className="flex-1 space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-white text-slate-700 border border-slate-200">
+                                  {sub.code || 'MAPEL'}
+                                </span>
+                                {isCiri && (
+                                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.2 rounded">
+                                    Ciri Khusus
+                                  </span>
+                                )}
+                              </div>
+                              <input
+                                type="text"
+                                value={sub.name}
+                                onChange={(e) => updateSubject(sub.id, { name: e.target.value })}
+                                className="w-full text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-amber-500 transition-all shadow-2xs"
+                                placeholder="Nama Mata Pelajaran..."
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+              <span className="text-slate-500">
+                💡 Seluruh perubahan nama mapel tersimpan otomatis dan langsung tampil pada pratinjau maupun cetakan raport.
+              </span>
+              <button
+                onClick={() => setShowSubjectNameModal(false)}
+                className="w-full sm:w-auto px-5 py-2 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-xl shadow-xs transition-colors"
+              >
+                Tutup & Terapkan Pada Raport
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

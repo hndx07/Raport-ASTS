@@ -248,12 +248,12 @@ export const initialSubjects: Subject[] = [
       'Peserta didik mampu menggunakan peralatan dan perlengkapan tempat kerja, antara lain alat-alat tangan dan alat ukur otomotif.',
   },
 
-  // C. KELOMPOK ISMUBA
+  // C. KELOMPOK CIRI KHUSUS (ISMUBA)
   {
     id: 'sub-kemuhammadiyahan',
     code: 'KMH',
     name: 'Kemuhammadiyahan',
-    category: 'C. KELOMPOK ISMUBA',
+    category: 'C. KELOMPOK CIRI KHUSUS (ISMUBA)',
     orderIndex: 13,
     isActive: true,
     defaultCompetencyDesc:
@@ -262,8 +262,8 @@ export const initialSubjects: Subject[] = [
   {
     id: 'sub-ismuba',
     code: 'ISMU',
-    name: 'ISMUBA',
-    category: 'C. KELOMPOK ISMUBA',
+    name: 'Ciri Khusus (ISMUBA)',
+    category: 'C. KELOMPOK CIRI KHUSUS (ISMUBA)',
     orderIndex: 14,
     isActive: true,
     defaultCompetencyDesc:
@@ -543,4 +543,12 @@ export const initialPrintSettings: PrintSettings = {
   fitToOnePage: true,
   headmasterSignatureHeight: 85,
   headmasterSignatureWidth: 230,
+  homeroomSignatureSpaceHeight: 52, // Space lega tanda tangan manual wali kelas
+  parentSignatureSpaceHeight: 46,
+  colWidthNo: 26,
+  colWidthSubject: 195,
+  colWidthFormatif: 56,
+  colWidthSumatif: 56,
+  homeroomSignatureRightOffset: 0,
+  identityRightOffset: 0,
 };

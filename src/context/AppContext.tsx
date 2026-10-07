@@ -81,8 +81,28 @@ interface AppContextType {
       formativeScore: number | null;
       summativeScore: number | null;
       competencyDesc: string;
+    }[],
+    newAttendanceData?: {
+      studentName: string;
+      studentNis: string;
+      sick: number;
+      permitted: number;
+      unexcused: number;
+    }[],
+    newExtracurricularData?: {
+      studentName: string;
+      studentNis: string;
+      name: string;
+      predicate: string;
+      description?: string;
     }[]
-  ) => { studentCount: number; gradeCount: number; removedCount: number };
+  ) => {
+    studentCount: number;
+    gradeCount: number;
+    attendanceCount: number;
+    extracurricularCount: number;
+    removedCount: number;
+  };
   transferStudentClass: (studentId: string, targetClassId: string) => void;
 
   subjects: Subject[];
@@ -471,7 +491,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       formativeScore: number | null;
       summativeScore: number | null;
       competencyDesc: string;
-    }[]
+    }[],
+    newAttendanceData: {
+      studentName: string;
+      studentNis: string;
+      sick: number;
+      permitted: number;
+      unexcused: number;
+    }[] = [],
+    newExtracurricularData: {
+      studentName: string;
+      studentNis: string;
+      name: string;
+      predicate: string;
+      description?: string;
+    }[] = []
   ) => {
     // 1. Keep students belonging to other classes
     const otherClassStudents = students.filter((s) => s.classId !== classId);
@@ -503,25 +537,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const removedStudents = existingInThisClass.filter((s) => !freshStudentIds.has(s.id));
     const removedStudentIds = new Set(removedStudents.map((s) => s.id));
 
-    // Purge attendances of removed students
-    if (removedStudentIds.size > 0) {
-      setAttendances((prev) => prev.filter((a) => !removedStudentIds.has(a.studentId)));
-      setExtracurriculars((prev) => prev.filter((e) => !removedStudentIds.has(e.studentId)));
-    }
-
-    // 2. Prepare new grades and clean up old grades for this class and period
+    // Lookup maps for fresh students
     const studentIdLookup = new Map<string, string>();
     freshClassStudents.forEach((st) => {
       studentIdLookup.set(st.nis, st.id);
       studentIdLookup.set(st.name.toUpperCase(), st.id);
     });
 
-    // Remove any grades belonging to this class in this period (both target students and removed students)
+    // All previous or target students of this class
     const allPreviousOrTargetIds = new Set([
       ...existingInThisClass.map((s) => s.id),
       ...freshClassStudents.map((s) => s.id),
     ]);
 
+    // 2. Prepare new grades and clean up old grades for this class and period
     const untouchedGrades = grades.filter((g) => {
       const isTargetPeriod = g.periodId === periodId;
       const isClassStudent = allPreviousOrTargetIds.has(g.studentId);
@@ -546,8 +575,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
     });
-
     setGrades([...untouchedGrades, ...freshGrades]);
+
+    // 3. REFRESH ATTENDANCES: Menghilangkan data kehadiran lama untuk kelas & periode ini, pasang data baru dari Excel
+    const untouchedAttendances = attendances.filter((a) => {
+      const isTargetPeriod = a.periodId === periodId;
+      const isClassStudent = allPreviousOrTargetIds.has(a.studentId);
+      return !(isTargetPeriod && isClassStudent);
+    });
+
+    const freshAttendances: AttendanceRecord[] = freshClassStudents.map((st) => {
+      const parsedAtt =
+        newAttendanceData.find((a) => a.studentNis === st.nis) ||
+        newAttendanceData.find((a) => a.studentName.toUpperCase() === st.name.toUpperCase());
+
+      return {
+        id: `att-${st.id}-${periodId}`,
+        studentId: st.id,
+        periodId: periodId,
+        sick: parsedAtt ? parsedAtt.sick : 0,
+        permitted: parsedAtt ? parsedAtt.permitted : 0,
+        unexcused: parsedAtt ? parsedAtt.unexcused : 0,
+      };
+    });
+    setAttendances([...untouchedAttendances, ...freshAttendances]);
+
+    // 4. REFRESH EKSTRAKURIKULER: Menghilangkan data ekstrakurikuler lama untuk kelas & periode ini, pasang data baru dari Excel
+    const untouchedExtracurriculars = extracurriculars.filter((e) => {
+      const isTargetPeriod = e.periodId === periodId;
+      const isClassStudent = allPreviousOrTargetIds.has(e.studentId);
+      return !(isTargetPeriod && isClassStudent);
+    });
+
+    const freshExtracurriculars: ExtracurricularRecord[] = [];
+    newExtracurricularData.forEach((extraItem, idx) => {
+      const resolvedId =
+        studentIdLookup.get(extraItem.studentNis) ||
+        studentIdLookup.get(extraItem.studentName.toUpperCase());
+      if (resolvedId && extraItem.name && extraItem.name.trim().length > 0) {
+        freshExtracurriculars.push({
+          id: `extra-${resolvedId}-${periodId}-${idx}`,
+          studentId: resolvedId,
+          periodId: periodId,
+          name: extraItem.name.trim(),
+          predicate: extraItem.predicate || 'Baik',
+          description:
+            extraItem.description ||
+            `Aktif mengikuti kegiatan ekstrakurikuler ${extraItem.name.trim()} dengan predikat ${extraItem.predicate || 'Baik'}.`,
+        });
+      }
+    });
+    setExtracurriculars([...untouchedExtracurriculars, ...freshExtracurriculars]);
 
     if (freshClassStudents.length > 0) {
       setSelectedStudentIdForReport(freshClassStudents[0].id);
@@ -556,6 +634,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return {
       studentCount: freshClassStudents.length,
       gradeCount: freshGrades.length,
+      attendanceCount: freshAttendances.length,
+      extracurricularCount: freshExtracurriculars.length,
       removedCount: removedStudents.length,
     };
   };

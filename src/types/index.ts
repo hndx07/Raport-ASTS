@@ -1,7 +1,10 @@
 export type SubjectCategory =
   | 'A. KELOMPOK MATA PELAJARAN UMUM'
   | 'B. KELOMPOK MATA PELAJARAN KEJURUAN'
-  | 'C. KELOMPOK ISMUBA';
+  | 'C. KELOMPOK CIRI KHUSUS (ISMUBA)'
+  | 'C. KELOMPOK ISMUBA'
+  | 'C. KELOMPOK CIRI KHUSUS'
+  | string;
 
 export interface SchoolProfile {
   id: string;
@@ -19,6 +22,13 @@ export interface SchoolProfile {
   showHeadmasterSignature: boolean;
   headmasterSignatureHeight: number; // in pixels (e.g., 85)
   headmasterSignatureWidth: number; // in pixels (e.g., 230)
+  // Pengaturan Wali Kelas & TTD Digital Resmi melalui Data Sekolah
+  homeroomTeacherName?: string;
+  homeroomTeacherNip?: string;
+  homeroomTeacherSignatureUrl?: string;
+  showHomeroomSignatureImage?: boolean;
+  homeroomSignatureHeight?: number; // in pixels (e.g., 65)
+  homeroomSignatureWidth?: number; // in pixels (e.g., 160)
 }
 
 export interface AcademicPeriod {
@@ -36,6 +46,8 @@ export interface ClassGroup {
   gradeLevel: 'X' | 'XI' | 'XII';
   major: string; // e.g. "Teknik Otomotif"
   homeroomTeacher: string; // e.g. "Wali Kelas X TO 4"
+  homeroomTeacherNip?: string;
+  homeroomTeacherSignatureUrl?: string;
   fase: 'E' | 'F';
 }
 
@@ -128,6 +140,48 @@ export interface PrintSettings {
   fitToOnePage: boolean;
   headmasterSignatureHeight: number;
   headmasterSignatureWidth: number;
+  // Manual layout customization for columns and signatures
+  homeroomSignatureSpaceHeight?: number; // Space tinggi tanda tangan wali kelas (px)
+  parentSignatureSpaceHeight?: number; // Space tinggi tanda tangan orang tua (px)
+  colWidthNo?: number; // Lebar kolom NO (px)
+  colWidthSubject?: number; // Lebar kolom Mata Pelajaran (px)
+  colWidthFormatif?: number; // Lebar kolom Nilai Formatif (px)
+  colWidthSumatif?: number; // Lebar kolom Nilai Sumatif (px)
+  homeroomSignatureRightOffset?: number; // Offset posisi tanda tangan wali kelas (px)
+  identityRightOffset?: number; // Offset posisi identitas semester/kelas/fase (px)
+}
+
+export interface LegerParseResult {
+  success: boolean;
+  studentsToUpsert: Omit<Student, 'id'>[];
+  gradesToUpsert: {
+    studentName: string;
+    studentNis: string;
+    subjectId: string;
+    formativeScore: number | null;
+    summativeScore: number | null;
+    competencyDesc: string;
+  }[];
+  attendancesToUpsert: {
+    studentName: string;
+    studentNis: string;
+    sick: number;
+    permitted: number;
+    unexcused: number;
+  }[];
+  extracurricularsToUpsert: {
+    studentName: string;
+    studentNis: string;
+    name: string;
+    predicate: string;
+    description?: string;
+  }[];
+  studentCount: number;
+  gradeCount: number;
+  attendanceCount: number;
+  extracurricularCount: number;
+  detectedSubjects: string[];
+  message: string;
 }
 
 export interface ToastNotification {

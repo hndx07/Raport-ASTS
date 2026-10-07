@@ -29,6 +29,8 @@ export const GradeLedgerView: React.FC = () => {
     setSelectedClassId,
     subjects,
     grades,
+    attendances,
+    extracurriculars,
     students,
     classStudents,
     selectedClass,
@@ -111,7 +113,9 @@ export const GradeLedgerView: React.FC = () => {
       classStudents,
       subjects,
       grades,
-      rankings
+      rankings,
+      attendances,
+      extracurriculars
     );
   };
 
@@ -150,19 +154,21 @@ export const GradeLedgerView: React.FC = () => {
           return;
         }
 
-        // Full clean replacement: any student or grade NOT present in this new Excel will be removed automatically!
+        // Full clean replacement: any student, old grades, old attendances, and old extracurriculars NOT in this Excel are refreshed and old records removed!
         const syncRes = replaceClassDataFromLegerExcel(
           selectedClassId,
           selectedPeriodId,
           result.studentsToUpsert,
-          result.gradesToUpsert
+          result.gradesToUpsert,
+          result.attendancesToUpsert,
+          result.extracurricularsToUpsert
         );
 
         const removedText =
           syncRes.removedCount > 0
-            ? ` ${syncRes.removedCount} peserta didik lama yang tidak ada di file Excel yang baru diunggah otomatis dihapus.`
+            ? ` ${syncRes.removedCount} peserta didik lama yang tidak tercantum di file Excel baru otomatis dibersihkan.`
             : '';
-        const msg = `Sinkronisasi Total Berhasil! Data kelas ${selectedClass?.name} diperbarui dengan ${syncRes.studentCount} peserta didik dan ${syncRes.gradeCount} nilai dari file "${file.name}".${removedText} Seluruh data di menu Raport PTS kini otomatis sinkron 100%!`;
+        const msg = `Sinkronisasi Total Berhasil! Data kelas ${selectedClass?.name} diperbarui: ${syncRes.studentCount} peserta didik, ${syncRes.gradeCount} nilai, ${result.attendancesToUpsert.length} data kehadiran, dan ${result.extracurricularsToUpsert.length} ekstrakurikuler dari file "${file.name}".${removedText} Seluruh data lama otomatis dibersihkan dan siap cetak di menu Raport PTS!`;
         setUploadSuccessInfo(msg);
         showToast('success', msg);
 

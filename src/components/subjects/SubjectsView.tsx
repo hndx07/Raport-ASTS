@@ -30,7 +30,7 @@ export const SubjectsView: React.FC = () => {
   const categories: SubjectCategory[] = [
     'A. KELOMPOK MATA PELAJARAN UMUM',
     'B. KELOMPOK MATA PELAJARAN KEJURUAN',
-    'C. KELOMPOK ISMUBA',
+    'C. KELOMPOK CIRI KHUSUS (ISMUBA)',
   ];
 
   const openAddModal = () => {
@@ -115,7 +115,18 @@ export const SubjectsView: React.FC = () => {
       {/* Render by Category Groups */}
       <div className="space-y-6">
         {categories.map((catName) => {
-          const groupSubjects = subjects.filter((s) => s.category === catName);
+          const groupSubjects = subjects.filter((s) => {
+            if (catName === 'C. KELOMPOK CIRI KHUSUS (ISMUBA)') {
+              return (
+                s.category === catName ||
+                s.category === 'C. KELOMPOK ISMUBA' ||
+                s.category === 'C. KELOMPOK CIRI KHUSUS' ||
+                (s.category && s.category.toUpperCase().includes('CIRI KHUSUS')) ||
+                (s.category && s.category.toUpperCase().includes('ISMUBA'))
+              );
+            }
+            return s.category === catName;
+          });
 
           return (
             <div
