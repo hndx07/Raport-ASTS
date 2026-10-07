@@ -239,6 +239,82 @@ export interface LegerParseResult {
 }
 
 /**
+ * Downloads a ready-to-use template specifically formatted for Leger Nilai.
+ */
+export function downloadLegerTemplate(
+  schoolName: string,
+  classGroup: ClassGroup,
+  period: AcademicPeriod,
+  subjects: Subject[]
+) {
+  const wb = XLSX.utils.book_new();
+  const activeSubjects = subjects.filter((s) => s.isActive);
+
+  const rows: any[][] = [];
+  rows.push([`LEGER NILAI SISWA — ${schoolName.toUpperCase()}`]);
+  rows.push([
+    `Kelas: ${classGroup.name}`,
+    `Fase: ${classGroup.fase}`,
+    `Tahun Pelajaran: ${period.academicYear}`,
+    `Semester: ${period.semester}`,
+    `Penilaian: ${period.assessmentType}`,
+    `Wali Kelas: ${classGroup.homeroomTeacher}`,
+  ]);
+  rows.push([]);
+
+  // Header 1
+  const headerRow1: string[] = ['NO', 'Nama peserta didik', 'NIS', 'NISN', 'Kelas', 'Fase'];
+  activeSubjects.forEach((sub) => {
+    headerRow1.push(sub.name, '', '');
+  });
+  headerRow1.push('Rata-rata', 'Mapel Terisi', 'Belum Lengkap', 'Peringkat');
+  rows.push(headerRow1);
+
+  // Header 2
+  const headerRow2: string[] = ['', '', '', '', '', ''];
+  activeSubjects.forEach(() => {
+    headerRow2.push('Formatif', 'Sumatif', 'Capaian Kompetensi');
+  });
+  headerRow2.push('', '', '', '');
+  rows.push(headerRow2);
+
+  // Sample student rows
+  const sampleStudents = [
+    { no: 1, name: 'ACHMAD KURNIAWAN', nis: '5421', nisn: '0081234567' },
+    { no: 2, name: 'BAGAS DWI SAPUTRA', nis: '5422', nisn: '0081234568' },
+    { no: 3, name: 'CANDRA ADI PRASETYO', nis: '5423', nisn: '0081234569' },
+  ];
+
+  sampleStudents.forEach((st) => {
+    const row: any[] = [st.no, st.name, st.nis, st.nisn, classGroup.name, classGroup.fase];
+    activeSubjects.forEach(() => {
+      row.push(80, 85, 'Menunjukkan pemahaman materi dengan baik');
+    });
+    row.push(82.5, activeSubjects.length, 0, st.no);
+    rows.push(row);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  const merges: XLSX.Range[] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 + activeSubjects.length * 3 + 3 } },
+  ];
+
+  let colIdx = 6;
+  activeSubjects.forEach(() => {
+    merges.push({
+      s: { r: 3, c: colIdx },
+      e: { r: 3, c: colIdx + 2 },
+    });
+    colIdx += 3;
+  });
+
+  ws['!merges'] = merges;
+  XLSX.utils.book_append_sheet(wb, ws, 'LEGER');
+  XLSX.writeFile(wb, `Template_Leger_${classGroup.name.replace(/\s+/g, '_')}.xlsx`);
+}
+
+/**
  * Specifically parses official Leger Excel files (e.g. FORMAT_RAPORT__X-1.xlsx).
  * Automatically extracts students, subjects, formative, summative, and competency descriptions.
  */

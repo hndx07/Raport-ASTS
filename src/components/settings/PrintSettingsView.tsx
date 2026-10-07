@@ -83,6 +83,52 @@ export const PrintSettingsView: React.FC = () => {
               </select>
             </div>
 
+            {/* Font Size Selector */}
+            <div className="p-3 rounded-xl border border-blue-200 bg-blue-50/40 space-y-2">
+              <div className="flex justify-between items-center text-xs font-bold text-slate-800">
+                <span>Ukuran Huruf File Siap Cetak (Rapor PTS)</span>
+                <span className="font-mono text-blue-800 bg-white px-2 py-0.5 rounded border border-blue-200">
+                  {printSettings.documentFontSizePt || 8.5} pt
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {[
+                  { label: '8.0 pt (Kompak)', val: 8.0 },
+                  { label: '8.5 pt (Pas 1 Hal A4)', val: 8.5 },
+                  { label: '9.0 pt (Standar)', val: 9.0 },
+                  { label: '9.5 pt (Sedang)', val: 9.5 },
+                  { label: '10.0 pt (Besar)', val: 10.0 },
+                ].map((opt) => (
+                  <button
+                    key={opt.val}
+                    type="button"
+                    onClick={() => updatePrintSettings({ documentFontSizePt: opt.val })}
+                    className={`px-2.5 py-1 text-xs rounded-lg font-bold border transition-all ${
+                      printSettings.documentFontSizePt === opt.val
+                        ? 'bg-blue-700 text-white border-blue-800 shadow-2xs'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="range"
+                min="7.5"
+                max="12.0"
+                step="0.1"
+                value={printSettings.documentFontSizePt || 8.5}
+                onChange={(e) =>
+                  updatePrintSettings({ documentFontSizePt: parseFloat(e.target.value) })
+                }
+                className="w-full accent-blue-600 cursor-pointer mt-1"
+              />
+              <div className="text-[11px] text-blue-900 font-medium">
+                * Disarankan 8.5 pt untuk memastikan seluruh 14 mata pelajaran & pengesahan muat tepat 1 halaman A4.
+              </div>
+            </div>
+
             <label className="flex items-center gap-3 p-3 rounded-xl border border-blue-200 bg-blue-50/60 cursor-pointer">
               <input
                 type="checkbox"
@@ -104,17 +150,32 @@ export const PrintSettingsView: React.FC = () => {
 
         {/* Pengesahan & Tanda Tangan */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-          <h2 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-3">
-            Pengesahan & Ukuran Tanda Tangan
-          </h2>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h2 className="text-sm font-bold text-slate-900">
+              Pengesahan & Ukuran Tanda Tangan
+            </h2>
+            <button
+              type="button"
+              onClick={() =>
+                updatePrintSettings({
+                  headmasterSignatureHeight: 85,
+                  headmasterSignatureWidth: 230,
+                })
+              }
+              className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 px-2.5 py-1 rounded-lg"
+              title="Atur ukuran tanda tangan lebih besar dan compact match pas dengan lebar kolom"
+            >
+              ⭐ Pas Kolom (85×230px)
+            </button>
+          </div>
 
           <div className="space-y-3 text-xs sm:text-sm">
             {/* Signature Height Slider */}
             <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
               <div className="flex justify-between items-center text-xs font-bold text-slate-800">
-                <span>Ukuran Tinggi Tanda Tangan Kepala Sekolah</span>
+                <span>Ukuran Tinggi Tanda Tangan (Height)</span>
                 <span className="font-mono text-blue-700 bg-white px-2 py-0.5 rounded border border-slate-200">
-                  {printSettings.headmasterSignatureHeight || 65} px
+                  {printSettings.headmasterSignatureHeight || 85} px
                 </span>
               </div>
               <input
@@ -122,14 +183,35 @@ export const PrintSettingsView: React.FC = () => {
                 min="35"
                 max="130"
                 step="5"
-                value={printSettings.headmasterSignatureHeight || 65}
+                value={printSettings.headmasterSignatureHeight || 85}
                 onChange={(e) =>
                   updatePrintSettings({ headmasterSignatureHeight: Number(e.target.value) })
                 }
                 className="w-full accent-blue-600 cursor-pointer"
               />
+            </div>
+
+            {/* Signature Width Slider (Compact match with column) */}
+            <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
+              <div className="flex justify-between items-center text-xs font-bold text-slate-800">
+                <span>Ukuran Lebar Tanda Tangan (Width - Compact Match Kolom)</span>
+                <span className="font-mono text-indigo-700 bg-white px-2 py-0.5 rounded border border-slate-200">
+                  {printSettings.headmasterSignatureWidth || 230} px
+                </span>
+              </div>
+              <input
+                type="range"
+                min="80"
+                max="280"
+                step="10"
+                value={printSettings.headmasterSignatureWidth || 230}
+                onChange={(e) =>
+                  updatePrintSettings({ headmasterSignatureWidth: Number(e.target.value) })
+                }
+                className="w-full accent-indigo-600 cursor-pointer"
+              />
               <div className="text-[11px] text-slate-500">
-                * Geser untuk mengecilkan atau membesarkan gambar tanda tangan agar pas dengan halaman rapor.
+                * Kolom pengesahan kepala sekolah di rapor berukuran ~280px. Ukuran 230px memberikan proporsi compact match yang pas dan kokoh.
               </div>
             </div>
 

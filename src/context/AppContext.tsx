@@ -70,6 +70,19 @@ interface AppContextType {
     newStudents: Omit<Student, 'id'>[],
     mode: 'skip_duplicate' | 'update_duplicate'
   ) => { added: number; updated: number; skipped: number };
+  replaceClassDataFromLegerExcel: (
+    classId: string,
+    periodId: string,
+    newStudentsData: Omit<Student, 'id'>[],
+    newGradesData: {
+      studentName: string;
+      studentNis: string;
+      subjectId: string;
+      formativeScore: number | null;
+      summativeScore: number | null;
+      competencyDesc: string;
+    }[]
+  ) => { studentCount: number; gradeCount: number; removedCount: number };
   transferStudentClass: (studentId: string, targetClassId: string) => void;
 
   subjects: Subject[];
@@ -298,6 +311,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
   const updateSchoolProfile = (patch: Partial<SchoolProfile>) => {
     setSchoolProfileState((prev) => ({ ...prev, ...patch }));
+    if (
+      patch.headmasterSignatureHeight !== undefined ||
+      patch.headmasterSignatureWidth !== undefined ||
+      patch.showHeadmasterSignature !== undefined
+    ) {
+      setPrintSettings((prev) => ({
+        ...prev,
+        ...(patch.headmasterSignatureHeight !== undefined
+          ? { headmasterSignatureHeight: patch.headmasterSignatureHeight }
+          : {}),
+        ...(patch.headmasterSignatureWidth !== undefined
+          ? { headmasterSignatureWidth: patch.headmasterSignatureWidth }
+          : {}),
+        ...(patch.showHeadmasterSignature !== undefined
+          ? { showHeadmasterSignature: patch.showHeadmasterSignature }
+          : {}),
+      }));
+    }
     showToast('success', 'Profil dan identitas sekolah berhasil diperbarui.');
   };
 
@@ -427,6 +458,106 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setStudents(updatedList);
     return { added, updated, skipped };
+  };
+
+  const replaceClassDataFromLegerExcel = (
+    classId: string,
+    periodId: string,
+    newStudentsData: Omit<Student, 'id'>[],
+    newGradesData: {
+      studentName: string;
+      studentNis: string;
+      subjectId: string;
+      formativeScore: number | null;
+      summativeScore: number | null;
+      competencyDesc: string;
+    }[]
+  ) => {
+    // 1. Keep students belonging to other classes
+    const otherClassStudents = students.filter((s) => s.classId !== classId);
+
+    // Existing students in this class for mapping/ID preservation
+    const existingInThisClass = students.filter((s) => s.classId === classId);
+    const existingMap = new Map<string, Student>();
+    existingInThisClass.forEach((s) => {
+      existingMap.set(s.nis, s);
+      existingMap.set(s.name.toUpperCase(), s);
+    });
+
+    // Fresh student list for this class: exactly those in the new Excel file!
+    const freshClassStudents: Student[] = newStudentsData.map((stData, idx) => {
+      const match = existingMap.get(stData.nis) || existingMap.get(stData.name.toUpperCase());
+      const studentId = match ? match.id : `s-${Date.now()}-${idx + 1}`;
+      return {
+        ...stData,
+        id: studentId,
+        classId,
+      };
+    });
+
+    const newAllStudents = [...otherClassStudents, ...freshClassStudents];
+    setStudents(newAllStudents);
+
+    // Any student from existingInThisClass who is NOT in freshClassStudents is removed!
+    const freshStudentIds = new Set(freshClassStudents.map((s) => s.id));
+    const removedStudents = existingInThisClass.filter((s) => !freshStudentIds.has(s.id));
+    const removedStudentIds = new Set(removedStudents.map((s) => s.id));
+
+    // Purge attendances of removed students
+    if (removedStudentIds.size > 0) {
+      setAttendances((prev) => prev.filter((a) => !removedStudentIds.has(a.studentId)));
+      setExtracurriculars((prev) => prev.filter((e) => !removedStudentIds.has(e.studentId)));
+    }
+
+    // 2. Prepare new grades and clean up old grades for this class and period
+    const studentIdLookup = new Map<string, string>();
+    freshClassStudents.forEach((st) => {
+      studentIdLookup.set(st.nis, st.id);
+      studentIdLookup.set(st.name.toUpperCase(), st.id);
+    });
+
+    // Remove any grades belonging to this class in this period (both target students and removed students)
+    const allPreviousOrTargetIds = new Set([
+      ...existingInThisClass.map((s) => s.id),
+      ...freshClassStudents.map((s) => s.id),
+    ]);
+
+    const untouchedGrades = grades.filter((g) => {
+      const isTargetPeriod = g.periodId === periodId;
+      const isClassStudent = allPreviousOrTargetIds.has(g.studentId);
+      return !(isTargetPeriod && isClassStudent);
+    });
+
+    const freshGrades: GradeRecord[] = [];
+    newGradesData.forEach((item) => {
+      const resolvedId =
+        studentIdLookup.get(item.studentNis) ||
+        studentIdLookup.get(item.studentName.toUpperCase());
+      if (resolvedId) {
+        freshGrades.push({
+          id: `${resolvedId}_${item.subjectId}_${periodId}`,
+          studentId: resolvedId,
+          subjectId: item.subjectId,
+          periodId: periodId,
+          formativeScore: item.formativeScore,
+          summativeScore: item.summativeScore,
+          competencyDesc: item.competencyDesc,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    });
+
+    setGrades([...untouchedGrades, ...freshGrades]);
+
+    if (freshClassStudents.length > 0) {
+      setSelectedStudentIdForReport(freshClassStudents[0].id);
+    }
+
+    return {
+      studentCount: freshClassStudents.length,
+      gradeCount: freshGrades.length,
+      removedCount: removedStudents.length,
+    };
   };
 
   const transferStudentClass = (studentId: string, targetClassId: string) => {
@@ -613,6 +744,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Print settings
   const updatePrintSettings = (patch: Partial<PrintSettings>) => {
     setPrintSettings((prev) => ({ ...prev, ...patch }));
+    if (
+      patch.headmasterSignatureHeight !== undefined ||
+      patch.headmasterSignatureWidth !== undefined ||
+      patch.showHeadmasterSignature !== undefined
+    ) {
+      setSchoolProfileState((prev) => ({
+        ...prev,
+        ...(patch.headmasterSignatureHeight !== undefined
+          ? { headmasterSignatureHeight: patch.headmasterSignatureHeight }
+          : {}),
+        ...(patch.headmasterSignatureWidth !== undefined
+          ? { headmasterSignatureWidth: patch.headmasterSignatureWidth }
+          : {}),
+        ...(patch.showHeadmasterSignature !== undefined
+          ? { showHeadmasterSignature: patch.showHeadmasterSignature }
+          : {}),
+      }));
+    }
     showToast('success', 'Pengaturan cetak diperbarui.');
   };
 
@@ -715,6 +864,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateStudent,
         deleteStudent,
         batchAddOrUpdateStudents,
+        replaceClassDataFromLegerExcel,
         transferStudentClass,
         subjects,
         addSubject,

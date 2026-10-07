@@ -281,23 +281,36 @@ export const SchoolProfileView: React.FC = () => {
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-3">
               <div className="flex items-center justify-between text-xs font-bold text-slate-800">
                 <span>Pengaturan Manual Ukuran Tanda Tangan</span>
-                <span className="text-[11px] font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
-                  {formData.headmasterSignatureHeight || 65}px × {formData.headmasterSignatureWidth || 140}px
-                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFormData({
+                      ...formData,
+                      headmasterSignatureHeight: 85,
+                      headmasterSignatureWidth: 230,
+                    })
+                  }
+                  className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 px-2.5 py-0.5 rounded-lg"
+                  title="Cocokkan tanda tangan lebih besar dan compact match pas dengan kolom tanda tangan"
+                >
+                  ⭐ Pas Kolom (85×230px)
+                </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div>
                   <div className="flex justify-between text-slate-600 mb-1">
                     <span>Tinggi (Height)</span>
-                    <span className="font-mono font-bold text-slate-800">{formData.headmasterSignatureHeight || 65} px</span>
+                    <span className="font-mono font-bold text-slate-800">
+                      {formData.headmasterSignatureHeight || 85} px
+                    </span>
                   </div>
                   <input
                     type="range"
                     min="35"
                     max="140"
                     step="5"
-                    value={formData.headmasterSignatureHeight || 65}
+                    value={formData.headmasterSignatureHeight || 85}
                     onChange={(e) =>
                       setFormData({ ...formData, headmasterSignatureHeight: Number(e.target.value) })
                     }
@@ -308,14 +321,16 @@ export const SchoolProfileView: React.FC = () => {
                 <div>
                   <div className="flex justify-between text-slate-600 mb-1">
                     <span>Lebar Maksimal (Width)</span>
-                    <span className="font-mono font-bold text-slate-800">{formData.headmasterSignatureWidth || 140} px</span>
+                    <span className="font-mono font-bold text-slate-800">
+                      {formData.headmasterSignatureWidth || 230} px
+                    </span>
                   </div>
                   <input
                     type="range"
                     min="70"
-                    max="260"
+                    max="280"
                     step="10"
-                    value={formData.headmasterSignatureWidth || 140}
+                    value={formData.headmasterSignatureWidth || 230}
                     onChange={(e) =>
                       setFormData({ ...formData, headmasterSignatureWidth: Number(e.target.value) })
                     }
