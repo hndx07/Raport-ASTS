@@ -1,0 +1,6 @@
+{
+  "name": "MUHIBA RAPORT — Sistem Pengolahan Nilai dan Rapor Siswa",
+  "description": "Aplikasi pengolahan nilai, leger otomatis, peringkat kelas, dan cetak rapor Kurikulum Merdeka untuk SMK Muhammadiyah Bawang.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
