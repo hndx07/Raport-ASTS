@@ -688,6 +688,30 @@ export function parseLegerExcel(
       });
     }
 
+    // Detect NIS / NISN columns from header labels (default: C = NIS, D = NISN).
+    // Jika header hanya memuat "NISN" (tanpa "NIS"), kolom itu dipakai untuk keduanya.
+    let nisCol = 2;
+    let nisnCol = 3;
+    {
+      let foundNis = -1;
+      let foundNisn = -1;
+      const labelEnd = Math.max(subjectHeaderRowIdx + 1, 7);
+      for (let r = 0; r < Math.min(labelEnd, rows.length); r++) {
+        for (let c = 0; c < 5 && c < rows[r].length; c++) {
+          const t = String(rows[r][c] ?? '').trim().toLowerCase();
+          if (t === 'nisn' && foundNisn === -1) foundNisn = c;
+          if ((t === 'nis' || t === 'nipd') && foundNis === -1) foundNis = c;
+        }
+      }
+      if (foundNisn !== -1 && foundNis === -1) {
+        nisnCol = foundNisn;
+        nisCol = foundNisn;
+      } else {
+        if (foundNis !== -1) nisCol = foundNis;
+        if (foundNisn !== -1) nisnCol = foundNisn;
+      }
+    }
+
     // 3. Detect Attendance & Extracurricular Columns on the Main Sheet
     let mainSickCol = -1;
     let mainPermittedCol = -1;
@@ -710,7 +734,7 @@ export function parseLegerExcel(
         if (text === 's' || text === 'sakit' || text.includes('(s)')) {
           if (mainSickCol === -1) mainSickCol = c;
         }
-        if (text === 'i' || text === 'izin' || text.includes('(i)')) {
+        if (text === 'i' || text === 'izin' || text === 'ijin' || text.includes('(i)')) {
           if (mainPermittedCol === -1) mainPermittedCol = c;
         }
         if (
@@ -728,11 +752,23 @@ export function parseLegerExcel(
         if (
           text.includes('ekstrakurikuler') ||
           text.includes('ekstra') ||
+          text.includes('ektra') ||
           text.includes('ekskul')
         ) {
           // Check if adjacent column is predikat/nilai
           const nextCell = String(row[c + 1] || '').trim().toLowerCase();
-          if (nextCell.includes('predikat') || nextCell.includes('nilai')) {
+          const belowRow = rows[r + 1] || [];
+          const isNumberedSlots =
+            String(belowRow[c] ?? '').trim() === '1' &&
+            String(belowRow[c + 1] ?? '').trim() === '2';
+          if (isNumberedSlots) {
+            // Header "Ekstra" dengan sub-kolom 1, 2, 3 = tiga slot nama ekstrakurikuler
+            for (let k = c; k < belowRow.length && /^\d+$/.test(String(belowRow[k] ?? '').trim()); k++) {
+              if (!mainExtraCols.some((p) => p.nameCol === k)) {
+                mainExtraCols.push({ nameCol: k, predCol: -1 });
+              }
+            }
+          } else if (nextCell.includes('predikat') || nextCell.includes('nilai')) {
             if (!mainExtraCols.some((p) => p.nameCol === c)) {
               mainExtraCols.push({ nameCol: c, predCol: c + 1 });
             }
@@ -774,18 +810,23 @@ export function parseLegerExcel(
     for (let r = studentDataStartRowIdx; r < rows.length; r++) {
       const row = rows[r];
       const rawName = String(row[1] || '').trim();
+      const lowName = rawName.toLowerCase();
+      // Lewati hanya baris ringkasan ("Rata-rata", "Total", "Mengetahui").
+      // Jangan pakai includes('rata'): nama seperti "PRATAMA" ikut terbuang.
       if (
         !rawName ||
-        rawName.toLowerCase().includes('rata') ||
-        rawName.toLowerCase().includes('total') ||
-        rawName.toLowerCase().includes('mengetahui')
+        /^rata[\s-]*rata/.test(lowName) ||
+        /^total\b/.test(lowName) ||
+        lowName.includes('mengetahui')
       ) {
         continue;
       }
 
       const stName = rawName.toUpperCase();
-      const stNis = String(row[2] || 5400 + r).trim();
-      const stNisn = String(row[3] || '').trim();
+      const nisnValue = nisnCol !== -1 ? String(row[nisnCol] ?? '').trim() : '';
+      const nisValue = nisCol !== -1 ? String(row[nisCol] ?? '').trim() : '';
+      const stNis = nisValue || nisnValue || String(5400 + r);
+      const stNisn = nisnValue;
 
       studentsToUpsert.push({
         nis: stNis,
